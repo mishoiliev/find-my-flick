@@ -1026,8 +1026,161 @@ async function fetchShowDetailsWithIMDB(
   }
 }
 
+// Get actor's basic credits (fast, no IMDB ratings) - uses data directly from credits endpoint
+export const getActorCreditsBasic = cache(
+  async (id: number): Promise<Show[]> => {
+    try {
+      const [movieCreditsRes, tvCreditsRes] = await Promise.all([
+        fetch(
+          `${TMDB_BASE_URL}/person/${id}/movie_credits?api_key=${TMDB_API_KEY}`,
+          {
+            next: { revalidate: 3600 }, // Revalidate every hour
+          }
+        ),
+        fetch(
+          `${TMDB_BASE_URL}/person/${id}/tv_credits?api_key=${TMDB_API_KEY}`,
+          {
+            next: { revalidate: 3600 },
+          }
+        ),
+      ]);
+
+      if (!movieCreditsRes.ok || !tvCreditsRes.ok) {
+        throw new Error('Failed to fetch actor credits');
+      }
+
+      const movieCredits: ActorCreditsResponse = await movieCreditsRes.json();
+      const tvCredits: ActorCreditsResponse = await tvCreditsRes.json();
+
+      // Normalize movie credits directly from the credits endpoint
+      const movieShows = (movieCredits.cast || []).map((movie: any) =>
+        normalizeShow(
+          {
+            id: movie.id,
+            title: movie.title,
+            name: movie.title,
+            overview: movie.overview || '',
+            poster_path: movie.poster_path,
+            backdrop_path: movie.backdrop_path,
+            release_date: movie.release_date,
+            vote_average: movie.vote_average || 0,
+            vote_count: movie.vote_count,
+            popularity: movie.popularity,
+            revenue: movie.revenue || 0,
+            order: movie.order ?? 999,
+            episode_count: 0,
+          },
+          'movie'
+        )
+      );
+
+      // Normalize TV credits directly from the credits endpoint
+      const tvShows = (tvCredits.cast || []).map((show: any) =>
+        normalizeShow(
+          {
+            id: show.id,
+            title: show.name,
+            name: show.name,
+            overview: show.overview || '',
+            poster_path: show.poster_path,
+            backdrop_path: show.backdrop_path,
+            first_air_date: show.first_air_date,
+            vote_average: show.vote_average || 0,
+            vote_count: show.vote_count,
+            popularity: show.popularity,
+            revenue: 0,
+            order: show.order ?? 999,
+            episode_count: show.episode_count || 0,
+          },
+          'tv'
+        )
+      );
+
+      // Combine and remove duplicates (same ID and media type)
+      const allShows = [...movieShows, ...tvShows];
+      const uniqueShows = allShows.filter(
+        (show, index, self) =>
+          index ===
+          self.findIndex(
+            (s) => s.id === show.id && s.media_type === show.media_type
+          )
+      );
+
+      return uniqueShows;
+    } catch (error) {
+      console.error('Error fetching actor credits:', error);
+      return [];
+    }
+  }
+);
+
+// Enrich actor credits with IMDB ratings (slow operation, use in Suspense)
+export const enrichActorCreditsWithIMDBRatings = cache(
+  async (shows: Show[]): Promise<Show[]> => {
+    // Process in batches to avoid rate limiting
+    const batchSize = 5;
+    const enrichedShows: Show[] = [];
+
+    for (let i = 0; i < shows.length; i += batchSize) {
+      const batch = shows.slice(i, i + batchSize);
+      const enrichedBatch = await Promise.all(
+        batch.map(async (show) => {
+          // Skip if already has IMDB rating
+          if (show.imdb_rating !== undefined) {
+            return show;
+          }
+
+          const mediaType = show.media_type || 'movie';
+          let enrichedShow = { ...show };
+
+          try {
+            // Get external IDs to find IMDB ID
+            const externalIdsResponse = await fetch(
+              `${TMDB_BASE_URL}/${mediaType}/${show.id}/external_ids?api_key=${TMDB_API_KEY}`,
+              {
+                next: { revalidate: 3600 },
+              }
+            );
+
+            if (externalIdsResponse.ok) {
+              const externalIds = await externalIdsResponse.json();
+              const imdbId = externalIds.imdb_id;
+
+              if (imdbId) {
+                enrichedShow.imdb_id = imdbId;
+                const imdbRating = await getIMDBRating(imdbId);
+                if (imdbRating !== null) {
+                  enrichedShow.imdb_rating = imdbRating;
+                }
+              }
+            }
+          } catch (error) {
+            // Silently fail - we'll just use TMDB rating
+            console.error(
+              `Error enriching show ${show.id} with IMDB rating:`,
+              error
+            );
+          }
+
+          return enrichedShow;
+        })
+      );
+
+      enrichedShows.push(...enrichedBatch);
+
+      // Small delay between batches to avoid rate limiting
+      if (i + batchSize < shows.length) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+    }
+
+    return enrichedShows;
+  }
+);
+
 // Get actor's combined credits (movies + TV shows) with caching
 // Fetches full show details with IMDB ratings using the same approach as home page
+// DEPRECATED: Use getActorCreditsBasic + enrichActorCreditsWithIMDBRatings for better performance
 export const getActorCredits = cache(async (id: number): Promise<Show[]> => {
   try {
     const [movieCreditsRes, tvCreditsRes] = await Promise.all([
