@@ -6,9 +6,11 @@ import {
   getSearchCacheKey,
 } from './cache';
 
-const TMDB_API_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY || '';
+const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
+const OMDB_API_KEY = process.env.OMDB_API_KEY || '';
+const OMDB_BASE_URL = 'https://www.omdbapi.com';
 
 // Cache TTLs (in milliseconds)
 const CACHE_TTL = {
@@ -27,6 +29,7 @@ export interface Show {
   backdrop_path: string | null;
   release_date?: string;
   first_air_date?: string;
+  last_air_date?: string; // End date for TV shows
   vote_average: number;
   vote_count?: number;
   popularity?: number;
@@ -34,6 +37,8 @@ export interface Show {
   revenue?: number; // Box office revenue for movies
   order?: number; // Role order/importance in cast (lower = more important, used for actor credits)
   episode_count?: number; // Number of episodes actor appeared in (for TV shows)
+  imdb_rating?: number; // IMDB rating (0-10 scale)
+  imdb_id?: string; // IMDB ID (e.g., "tt0111161")
 }
 
 export interface TMDBResponse {
@@ -78,6 +83,39 @@ export interface ActorResponse {
   total_results: number;
 }
 
+// Normalize a show object to ensure consistency across all pages
+// This ensures all Show objects have the same structure regardless of source
+export function normalizeShow(
+  show: Partial<Show>,
+  mediaType: 'movie' | 'tv'
+): Show {
+  // TMDB returns 'title' for movies and 'name' for TV shows
+  // We ensure both fields are populated for consistency
+  const title = show.title || show.name || '';
+  const name = show.name || show.title || undefined;
+
+  return {
+    id: show.id!,
+    title,
+    name,
+    overview: show.overview || '',
+    poster_path: show.poster_path ?? null,
+    backdrop_path: show.backdrop_path ?? null,
+    release_date: show.release_date,
+    first_air_date: show.first_air_date,
+    last_air_date: show.last_air_date,
+    vote_average: show.vote_average ?? 0,
+    vote_count: show.vote_count,
+    popularity: show.popularity,
+    media_type: mediaType,
+    revenue: show.revenue,
+    order: show.order,
+    episode_count: show.episode_count,
+    imdb_rating: show.imdb_rating,
+    imdb_id: show.imdb_id,
+  };
+}
+
 // Get the display title (handles both movies and TV shows)
 export function getShowTitle(show: Show): string {
   return show.title || show.name || 'Unknown';
@@ -86,6 +124,11 @@ export function getShowTitle(show: Show): string {
 // Get the release date (handles both movies and TV shows)
 export function getShowDate(show: Show): string {
   return show.release_date || show.first_air_date || 'Unknown';
+}
+
+// Get the rating (prefers IMDB rating, falls back to TMDB vote_average)
+export function getShowRating(show: Show): number {
+  return show.imdb_rating ?? show.vote_average;
 }
 
 // Get poster image URL
@@ -259,15 +302,9 @@ export const fetchPopularShows = cache(async (): Promise<Show[]> => {
     const moviesData: TMDBResponse = await moviesRes.json();
     const tvData: TMDBResponse = await tvRes.json();
 
-    // Combine and mark media type
-    const movies = moviesData.results.map((m) => ({
-      ...m,
-      media_type: 'movie' as const,
-    }));
-    const tvShows = tvData.results.map((t) => ({
-      ...t,
-      media_type: 'tv' as const,
-    }));
+    // Combine and normalize shows
+    const movies = moviesData.results.map((m) => normalizeShow(m, 'movie'));
+    const tvShows = tvData.results.map((t) => normalizeShow(t, 'tv'));
 
     // Combine and shuffle for variety
     const allShows = [...movies, ...tvShows];
@@ -277,6 +314,150 @@ export const fetchPopularShows = cache(async (): Promise<Show[]> => {
     return [];
   }
 });
+
+// Fetch popular movies only with caching
+// Uses TMDB's popularity algorithm which considers votes, views, and recency
+export const fetchPopularMovies = cache(async (): Promise<Show[]> => {
+  try {
+    const response = await fetch(
+      `${TMDB_BASE_URL}/movie/popular?api_key=${TMDB_API_KEY}`,
+      {
+        next: { revalidate: 1800 }, // Revalidate every 30 minutes
+      }
+    );
+
+    const data: TMDBResponse = await response.json();
+
+    // Normalize shows
+    const movies = data.results.map((m) => normalizeShow(m, 'movie'));
+
+    // Enrich with IMDB ratings (for first 20 to avoid too many API calls)
+    const enrichedMovies = await enrichShowsWithIMDBRatings(movies, 'movie');
+
+    return enrichedMovies;
+  } catch (error) {
+    console.error('Error fetching popular movies:', error);
+    return [];
+  }
+});
+
+// Fetch top-rated movies (sorted by vote_average with minimum vote requirements)
+export const fetchTopRatedMovies = cache(async (): Promise<Show[]> => {
+  try {
+    const response = await fetch(
+      `${TMDB_BASE_URL}/movie/top_rated?api_key=${TMDB_API_KEY}`,
+      {
+        next: { revalidate: 1800 }, // Revalidate every 30 minutes
+      }
+    );
+
+    const data: TMDBResponse = await response.json();
+
+    // Normalize shows
+    const movies = data.results.map((m) => normalizeShow(m, 'movie'));
+
+    return movies;
+  } catch (error) {
+    console.error('Error fetching top-rated movies:', error);
+    return [];
+  }
+});
+
+// Fetch popular TV shows only with caching
+// Uses TMDB's popularity algorithm which considers votes, views, and recency
+export const fetchPopularTVShows = cache(async (): Promise<Show[]> => {
+  try {
+    const response = await fetch(
+      `${TMDB_BASE_URL}/tv/popular?api_key=${TMDB_API_KEY}`,
+      {
+        next: { revalidate: 1800 }, // Revalidate every 30 minutes
+      }
+    );
+
+    const data: TMDBResponse = await response.json();
+
+    // Normalize shows
+    const tvShows = data.results.map((t) => normalizeShow(t, 'tv'));
+
+    // Enrich with IMDB ratings (for first 20 to avoid too many API calls)
+    const enrichedTVShows = await enrichShowsWithIMDBRatings(tvShows, 'tv');
+
+    return enrichedTVShows;
+  } catch (error) {
+    console.error('Error fetching popular TV shows:', error);
+    return [];
+  }
+});
+
+// Fetch top-rated TV shows (sorted by vote_average with minimum vote requirements)
+export const fetchTopRatedTVShows = cache(async (): Promise<Show[]> => {
+  try {
+    const response = await fetch(
+      `${TMDB_BASE_URL}/tv/top_rated?api_key=${TMDB_API_KEY}`,
+      {
+        next: { revalidate: 1800 }, // Revalidate every 30 minutes
+      }
+    );
+
+    const data: TMDBResponse = await response.json();
+
+    // Normalize shows
+    const tvShows = data.results.map((t) => normalizeShow(t, 'tv'));
+
+    return tvShows;
+  } catch (error) {
+    console.error('Error fetching top-rated TV shows:', error);
+    return [];
+  }
+});
+
+// Fetch trending movies (what's trending right now - day or week)
+export const fetchTrendingMovies = cache(
+  async (timeWindow: 'day' | 'week' = 'week'): Promise<Show[]> => {
+    try {
+      const response = await fetch(
+        `${TMDB_BASE_URL}/trending/movie/${timeWindow}?api_key=${TMDB_API_KEY}`,
+        {
+          next: { revalidate: 1800 }, // Revalidate every 30 minutes
+        }
+      );
+
+      const data: TMDBResponse = await response.json();
+
+      // Normalize shows
+      const movies = data.results.map((m) => normalizeShow(m, 'movie'));
+
+      return movies;
+    } catch (error) {
+      console.error('Error fetching trending movies:', error);
+      return [];
+    }
+  }
+);
+
+// Fetch trending TV shows (what's trending right now - day or week)
+export const fetchTrendingTVShows = cache(
+  async (timeWindow: 'day' | 'week' = 'week'): Promise<Show[]> => {
+    try {
+      const response = await fetch(
+        `${TMDB_BASE_URL}/trending/tv/${timeWindow}?api_key=${TMDB_API_KEY}`,
+        {
+          next: { revalidate: 1800 }, // Revalidate every 30 minutes
+        }
+      );
+
+      const data: TMDBResponse = await response.json();
+
+      // Normalize shows
+      const tvShows = data.results.map((t) => normalizeShow(t, 'tv'));
+
+      return tvShows;
+    } catch (error) {
+      console.error('Error fetching trending TV shows:', error);
+      return [];
+    }
+  }
+);
 
 // Fetch popular actors (250 most popular)
 export const fetchPopularActors = cache(async (): Promise<Actor[]> => {
@@ -378,10 +559,10 @@ export async function searchShows(
     const movieData: TMDBResponse = await movieResponse.json();
     const tvData: TMDBResponse = await tvResponse.json();
 
-    // Combine movie and TV results, marking media types
+    // Combine movie and TV results, normalizing shows
     const combinedResults: Show[] = [
-      ...movieData.results.map((m) => ({ ...m, media_type: 'movie' as const })),
-      ...tvData.results.map((t) => ({ ...t, media_type: 'tv' as const })),
+      ...movieData.results.map((m) => normalizeShow(m, 'movie')),
+      ...tvData.results.map((t) => normalizeShow(t, 'tv')),
     ];
 
     // Calculate pagination: we show ~40 results per page (20 movies + 20 TV)
@@ -423,19 +604,17 @@ export async function searchShows(
 
         if (movieCreditsRes.ok) {
           const movieCredits = await movieCreditsRes.json();
-          const movies = (movieCredits.cast || []).map((movie: any) => ({
-            ...movie,
-            media_type: 'movie' as const,
-          }));
+          const movies = (movieCredits.cast || []).map((movie: any) =>
+            normalizeShow(movie, 'movie')
+          );
           actorMovies.push(...movies);
         }
 
         if (tvCreditsRes.ok) {
           const tvCredits = await tvCreditsRes.json();
-          const tvShows = (tvCredits.cast || []).map((show: any) => ({
-            ...show,
-            media_type: 'tv' as const,
-          }));
+          const tvShows = (tvCredits.cast || []).map((show: any) =>
+            normalizeShow(show, 'tv')
+          );
           actorMovies.push(...tvShows);
         }
       } catch (error) {
@@ -464,13 +643,53 @@ export async function searchShows(
     // Combine search results and actor matches
     const allResults = [...searchResults, ...actorMatches];
 
-    // Sort all results by popularity
+    // Sort all results by popularity first
     const sortedResults = sortShowsByPopularity(allResults);
+
+    // Enrich with IMDB ratings (for first 20 to avoid too many API calls)
+    // Take top 20 from sorted results, then split by media type
+    const top20Results = sortedResults.slice(0, 20);
+    const remainingResults = sortedResults.slice(20);
+
+    const top20Movies = top20Results.filter((s) => s.media_type === 'movie');
+    const top20TVShows = top20Results.filter((s) => s.media_type === 'tv');
+
+    // Enrich movies and TV shows separately (limit to first 10 of each to stay within 20 total)
+    const enrichedMovies = await enrichShowsWithIMDBRatings(
+      top20Movies.slice(0, 10),
+      'movie'
+    );
+    const enrichedTVShows = await enrichShowsWithIMDBRatings(
+      top20TVShows.slice(0, 10),
+      'tv'
+    );
+
+    // Combine enriched shows with remaining from top 20, then add remaining results
+    const remainingTop20Movies = top20Movies.slice(10);
+    const remainingTop20TVShows = top20TVShows.slice(10);
+
+    // Reconstruct top 20 maintaining popularity order
+    // Create a map of enriched shows for quick lookup
+    const enrichedMap = new Map<number, Show>();
+    [...enrichedMovies, ...enrichedTVShows].forEach((show) => {
+      enrichedMap.set(show.id, show);
+    });
+
+    // Replace shows in top20Results with enriched versions if available
+    const enrichedTop20 = top20Results.map(
+      (show) => enrichedMap.get(show.id) || show
+    );
+
+    // Combine enriched top 20 with remaining results and re-sort to maintain popularity order
+    const enrichedResults = [...enrichedTop20, ...remainingResults];
+    const finalSortedResults = sortShowsByPopularity(enrichedResults);
 
     // Limit results only for dropdown (when maxResults is low)
     // For search page pagination, return all results to maintain consistent page sizes
     const limitedResults =
-      maxResults >= 100 ? sortedResults : sortedResults.slice(0, maxResults);
+      maxResults >= 100
+        ? finalSortedResults
+        : finalSortedResults.slice(0, maxResults);
 
     const sortedData: TMDBResponse = {
       ...searchData,
@@ -489,23 +708,140 @@ export async function searchShows(
   }
 }
 
-// Get show details with caching
+// Get IMDB rating from OMDB API
+async function getIMDBRating(imdbId: string): Promise<number | null> {
+  if (!OMDB_API_KEY) {
+    console.warn(
+      'OMDB API key not configured. IMDB ratings will not be available.'
+    );
+    return null;
+  }
+
+  try {
+    const response = await fetch(
+      `${OMDB_BASE_URL}/?i=${imdbId}&apikey=${OMDB_API_KEY}`,
+      {
+        next: { revalidate: 3600 }, // Revalidate every hour
+      }
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json();
+    if (data.Response === 'True' && data.imdbRating) {
+      const rating = parseFloat(data.imdbRating);
+      return isNaN(rating) ? null : rating;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error fetching IMDB rating:', error);
+    return null;
+  }
+}
+
+// Enrich a show with IMDB rating (for list views)
+async function enrichShowWithIMDBRating(
+  show: Show,
+  mediaType: 'movie' | 'tv'
+): Promise<Show> {
+  // If already has IMDB rating, return as is
+  if (show.imdb_rating !== undefined) {
+    return show;
+  }
+
+  try {
+    // Get external IDs to find IMDB ID
+    const externalIdsResponse = await fetch(
+      `${TMDB_BASE_URL}/${mediaType}/${show.id}/external_ids?api_key=${TMDB_API_KEY}`,
+      {
+        next: { revalidate: 3600 },
+      }
+    );
+
+    if (externalIdsResponse.ok) {
+      const externalIds = await externalIdsResponse.json();
+      const imdbId = externalIds.imdb_id;
+
+      if (imdbId) {
+        show.imdb_id = imdbId;
+        const imdbRating = await getIMDBRating(imdbId);
+        if (imdbRating !== null) {
+          show.imdb_rating = imdbRating;
+        }
+      }
+    }
+  } catch (error) {
+    // Silently fail - we'll just use TMDB rating
+    console.error('Error enriching show with IMDB rating:', error);
+  }
+
+  return show;
+}
+
+// Enrich multiple shows with IMDB ratings (batched, with rate limiting)
+async function enrichShowsWithIMDBRatings(
+  shows: Show[],
+  mediaType: 'movie' | 'tv'
+): Promise<Show[]> {
+  // Limit to first 20 shows to avoid too many API calls
+  const showsToEnrich = shows.slice(0, 20);
+  const remainingShows = shows.slice(20);
+
+  // Process in batches of 5 to avoid rate limiting
+  const batchSize = 5;
+  const enrichedShows: Show[] = [];
+
+  for (let i = 0; i < showsToEnrich.length; i += batchSize) {
+    const batch = showsToEnrich.slice(i, i + batchSize);
+    const enrichedBatch = await Promise.all(
+      batch.map((show) => enrichShowWithIMDBRating(show, mediaType))
+    );
+    enrichedShows.push(...enrichedBatch);
+  }
+
+  return [...enrichedShows, ...remainingShows];
+}
+
+// Get show details with caching and IMDB rating
 export const getShowDetails = cache(
   async (id: number, mediaType: 'movie' | 'tv'): Promise<Show | null> => {
     try {
-      const response = await fetch(
-        `${TMDB_BASE_URL}/${mediaType}/${id}?api_key=${TMDB_API_KEY}`,
-        {
+      const [showResponse, externalIdsResponse] = await Promise.all([
+        fetch(`${TMDB_BASE_URL}/${mediaType}/${id}?api_key=${TMDB_API_KEY}`, {
           next: { revalidate: 3600 }, // Revalidate every hour
-        }
-      );
+        }),
+        fetch(
+          `${TMDB_BASE_URL}/${mediaType}/${id}/external_ids?api_key=${TMDB_API_KEY}`,
+          {
+            next: { revalidate: 3600 },
+          }
+        ),
+      ]);
 
-      if (!response.ok) {
+      if (!showResponse.ok) {
         throw new Error('Failed to fetch show details');
       }
 
-      const data: Show = await response.json();
-      return { ...data, media_type: mediaType };
+      const data: Show = await showResponse.json();
+      const show: Show = normalizeShow(data, mediaType);
+
+      // Get IMDB ID and rating
+      if (externalIdsResponse.ok) {
+        const externalIds = await externalIdsResponse.json();
+        const imdbId = externalIds.imdb_id;
+
+        if (imdbId) {
+          show.imdb_id = imdbId;
+          const imdbRating = await getIMDBRating(imdbId);
+          if (imdbRating !== null) {
+            show.imdb_rating = imdbRating;
+          }
+        }
+      }
+
+      return show;
     } catch (error) {
       console.error('Error fetching show details:', error);
       return null;
@@ -651,7 +987,47 @@ export const getActorDetails = cache(
   }
 );
 
+// Helper function to fetch show details with IMDB rating (not cached, for use in loops)
+// Uses append_to_response to get external_ids in a single call
+async function fetchShowDetailsWithIMDB(
+  id: number,
+  mediaType: 'movie' | 'tv'
+): Promise<Show | null> {
+  try {
+    // Use append_to_response to get external_ids in the same call
+    const showResponse = await fetch(
+      `${TMDB_BASE_URL}/${mediaType}/${id}?api_key=${TMDB_API_KEY}&append_to_response=external_ids`,
+      {
+        next: { revalidate: 3600 }, // Revalidate every hour
+      }
+    );
+
+    if (!showResponse.ok) {
+      return null;
+    }
+
+    const data: any = await showResponse.json();
+    const show: Show = normalizeShow(data, mediaType);
+
+    // Get IMDB ID and rating from the appended external_ids
+    if (data.external_ids?.imdb_id) {
+      const imdbId = data.external_ids.imdb_id;
+      show.imdb_id = imdbId;
+      const imdbRating = await getIMDBRating(imdbId);
+      if (imdbRating !== null) {
+        show.imdb_rating = imdbRating;
+      }
+    }
+
+    return show;
+  } catch (error) {
+    console.error(`Error fetching show details for ${mediaType}/${id}:`, error);
+    return null;
+  }
+}
+
 // Get actor's combined credits (movies + TV shows) with caching
+// Fetches full show details with IMDB ratings using the same approach as home page
 export const getActorCredits = cache(async (id: number): Promise<Show[]> => {
   try {
     const [movieCreditsRes, tvCreditsRes] = await Promise.all([
@@ -676,35 +1052,74 @@ export const getActorCredits = cache(async (id: number): Promise<Show[]> => {
     const movieCredits: ActorCreditsResponse = await movieCreditsRes.json();
     const tvCredits: ActorCreditsResponse = await tvCreditsRes.json();
 
-    // Combine and mark media types, preserving revenue for movies and order for role importance
-    const movies = (movieCredits.cast || []).map((movie: any) => ({
-      ...movie,
-      media_type: 'movie' as const,
-      revenue: movie.revenue || 0, // Preserve revenue for movies
-      order: movie.order ?? 999, // Preserve order (role importance), default to 999 if missing
-      episode_count: 0, // Movies don't have episodes
-    }));
-    const tvShows = (tvCredits.cast || []).map((show: any) => ({
-      ...show,
-      media_type: 'tv' as const,
-      revenue: 0, // TV shows don't have box office revenue
-      order: show.order ?? 999, // Preserve order (role importance), default to 999 if missing
-      episode_count: show.episode_count || 0, // Preserve episode count for TV shows
+    // Extract credit info (ID, order, episode_count, revenue) from credits endpoint
+    const movieCreditInfo = (movieCredits.cast || []).map((movie: any) => ({
+      id: movie.id,
+      mediaType: 'movie' as const,
+      order: movie.order ?? 999,
+      revenue: movie.revenue || 0,
+      episode_count: 0,
     }));
 
-    // Combine all credits
-    const allCredits = [...movies, ...tvShows];
+    const tvCreditInfo = (tvCredits.cast || []).map((show: any) => ({
+      id: show.id,
+      mediaType: 'tv' as const,
+      order: show.order ?? 999,
+      revenue: 0,
+      episode_count: show.episode_count || 0,
+    }));
+
+    // Combine all credit info
+    const allCreditInfo = [...movieCreditInfo, ...tvCreditInfo];
 
     // Remove duplicates (same ID and media type)
-    const uniqueCredits = allCredits.filter(
+    const uniqueCreditInfo = allCreditInfo.filter(
       (credit, index, self) =>
         index ===
         self.findIndex(
-          (c) => c.id === credit.id && c.media_type === credit.media_type
+          (c) => c.id === credit.id && c.mediaType === credit.mediaType
         )
     );
 
-    return uniqueCredits;
+    // Fetch full show details with IMDB ratings
+    // Process in batches to avoid too many concurrent requests
+    const batchSize = 5; // Smaller batch size to avoid rate limiting
+    const allShows: Show[] = [];
+
+    for (let i = 0; i < uniqueCreditInfo.length; i += batchSize) {
+      const batch = uniqueCreditInfo.slice(i, i + batchSize);
+      const showPromises = batch.map(async (creditInfo) => {
+        const show = await fetchShowDetailsWithIMDB(
+          creditInfo.id,
+          creditInfo.mediaType
+        );
+        if (show) {
+          // Merge credit-specific fields with full show data
+          return normalizeShow(
+            {
+              ...show,
+              order: creditInfo.order,
+              revenue: creditInfo.revenue,
+              episode_count: creditInfo.episode_count,
+            },
+            creditInfo.mediaType
+          );
+        }
+        return null;
+      });
+
+      const batchResults = await Promise.all(showPromises);
+      allShows.push(
+        ...batchResults.filter((show): show is Show => show !== null)
+      );
+
+      // Small delay between batches to avoid rate limiting
+      if (i + batchSize < uniqueCreditInfo.length) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+    }
+
+    return allShows;
   } catch (error) {
     console.error('Error fetching actor credits:', error);
     return [];

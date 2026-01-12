@@ -1,22 +1,101 @@
-import Image from 'next/image';
-import {
-  getShowDetails,
-  getPosterUrl,
-  getBackdropUrl,
-  getShowTitle,
-  getShowDate,
-  getWatchProviders,
-  getShowCredits,
-} from '@/lib/tmdb';
-import { notFound } from 'next/navigation';
-import WatchProviders from '@/components/WatchProviders';
-import HypeMeter from '@/components/HypeMeter';
 import CastList from '@/components/CastList';
+import HypeMeter from '@/components/HypeMeter';
+import IMDBIcon from '@/components/IMDBIcon';
+import WatchProviders from '@/components/WatchProviders';
+import {
+  getBackdropUrl,
+  getPosterUrl,
+  getShowCredits,
+  getShowDate,
+  getShowDetails,
+  getShowRating,
+  getShowTitle,
+  getWatchProviders,
+} from '@/lib/tmdb';
+import type { Metadata } from 'next';
+import Image from 'next/image';
+import { notFound } from 'next/navigation';
 
 interface ShowDetailPageProps {
   params: {
     type: string;
     id: string;
+  };
+}
+
+export async function generateMetadata({
+  params,
+}: ShowDetailPageProps): Promise<Metadata> {
+  const { type, id } = params;
+  const showId = parseInt(id);
+  const mediaType = type === 'tv' ? 'tv' : 'movie';
+
+  if (isNaN(showId)) {
+    return {
+      title: 'Show Not Found',
+    };
+  }
+
+  const show = await getShowDetails(showId, mediaType);
+
+  if (!show) {
+    return {
+      title: 'Show Not Found',
+    };
+  }
+
+  const title = getShowTitle(show);
+  const description =
+    show.overview ||
+    `Find where to watch ${title}. Discover streaming platforms, rental options, and purchase locations.`;
+  const posterUrl = getPosterUrl(show.poster_path);
+  const backdropUrl = getBackdropUrl(show.backdrop_path);
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL?.trim() || 'https://findmyflick.space';
+
+  const keywords = [
+    title,
+    mediaType === 'tv' ? 'TV show' : 'movie',
+    'where to watch',
+    'streaming',
+    'watch online',
+  ];
+
+  // Add genres if available (TMDB API returns genres but they're not in our Show type)
+  if ('genres' in show && Array.isArray((show as any).genres)) {
+    keywords.push(...(show as any).genres.map((g: { name: string }) => g.name));
+  }
+
+  return {
+    title: `${title} - Where to Watch`,
+    description,
+    keywords,
+    openGraph: {
+      title: `${title} - Where to Watch | Find my Flick`,
+      description,
+      type: 'video.movie',
+      url: `${siteUrl}/show/${type}/${id}`,
+      images: [
+        {
+          url: backdropUrl || posterUrl,
+          width: 1200,
+          height: 630,
+          alt: title,
+        },
+        {
+          url: posterUrl,
+          width: 500,
+          height: 750,
+          alt: title,
+        },
+      ],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: `${title} - Where to Watch`,
+      description,
+      images: [backdropUrl || posterUrl],
+    },
   };
 }
 
@@ -40,63 +119,114 @@ export default async function ShowDetailPage({ params }: ShowDetailPageProps) {
   }
 
   const title = getShowTitle(show);
-  const date = getShowDate(show);
+  const dateString = getShowDate(show);
   const posterUrl = getPosterUrl(show.poster_path);
   const backdropUrl = getBackdropUrl(show.backdrop_path);
 
+  // Format date to match actor page format (month date, year)
+  const formatDate = (dateString: string) => {
+    if (!dateString || dateString === 'Unknown') return 'Unknown';
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+    } catch {
+      return dateString;
+    }
+  };
+
+  const formattedDate = formatDate(dateString);
+
+  // Format end date for TV shows
+  const formattedEndDate =
+    mediaType === 'tv' && show.last_air_date
+      ? formatDate(show.last_air_date)
+      : null;
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#0f0f0f] via-[#1a1a1a] to-[#0a0a0a]">
+    <div className='min-h-screen bg-gradient-to-b from-[#0f0f0f] via-[#1a1a1a] to-[#0a0a0a]'>
       {/* Backdrop */}
       {show.backdrop_path && (
-        <div className="relative h-[60vh] w-full overflow-hidden">
+        <div className='relative h-[60vh] w-full overflow-hidden'>
           <Image
             src={backdropUrl}
             alt={title}
             fill
-            className="object-cover"
+            className='object-cover'
             priority
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent" />
+          <div className='absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent' />
         </div>
       )}
 
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex flex-col md:flex-row gap-8 -mt-32 relative z-10">
+      <div className='container mx-auto px-4 py-8'>
+        <div className='flex flex-col md:flex-row gap-8 -mt-32 relative z-10'>
           {/* Poster */}
-          <div className="flex-shrink-0">
-            <div className="w-48 md:w-64 aspect-[2/3] relative rounded-lg overflow-hidden shadow-2xl">
+          <div className='flex-shrink-0'>
+            <div className='w-48 md:w-64 aspect-[2/3] relative rounded-lg overflow-hidden shadow-2xl'>
               {show.poster_path ? (
                 <Image
                   src={posterUrl}
                   alt={title}
                   fill
-                  className="object-cover"
-                  sizes="(max-width: 768px) 192px, 256px"
+                  className='object-cover'
+                  sizes='(max-width: 768px) 192px, 256px'
                 />
               ) : (
-                <div className="w-full h-full bg-[#1a1a1a] flex items-center justify-center">
-                  <span className="text-[#FFD700]/50">No Image</span>
+                <div className='w-full h-full bg-[#1a1a1a] flex items-center justify-center'>
+                  <span className='text-[#FFD700]/50'>No Image</span>
                 </div>
               )}
             </div>
           </div>
 
           {/* Details */}
-          <div className="flex-1 text-[#FFD700]">
-            <div className="flex items-center gap-3 mb-4">
-              <h1 className="text-4xl md:text-5xl font-bold">{title}</h1>
-              <span className="px-3 py-1 bg-[#FFD700] text-[#000000] rounded-full text-sm font-semibold">
+          <div className='flex-1 text-[#FFD700]'>
+            <div className='flex items-center gap-3 mb-4'>
+              <h1 className='text-4xl md:text-5xl font-bold'>{title}</h1>
+              <span className='px-3 py-1 bg-[#FFD700] text-[#000000] rounded-full text-sm font-semibold'>
                 {mediaType === 'tv' ? 'TV Show' : 'Movie'}
               </span>
             </div>
 
-            <div className="flex items-center gap-4 mb-6 text-[#f2f2f1] flex-wrap">
-              <span>{date}</span>
-              <span>•</span>
-              <div className="flex items-center gap-1">
-                <span className="text-[#FFD700]">⭐</span>
-                <span>{show.vote_average.toFixed(1)}</span>
-              </div>
+            <div className='flex items-center gap-4 mb-6 text-[#f2f2f1] flex-wrap'>
+              <span>
+                {mediaType === 'tv' ? (
+                  <>
+                    {formattedDate}
+                    {formattedEndDate && formattedEndDate !== formattedDate ? (
+                      <> - {formattedEndDate}</>
+                    ) : !show.last_air_date ? (
+                      <> - Present</>
+                    ) : null}
+                  </>
+                ) : (
+                  formattedDate
+                )}
+              </span>
+              {(() => {
+                // getShowRating prefers IMDB rating, falls back to TMDB vote_average
+                const rating = getShowRating(show);
+                return (
+                  rating > 0 &&
+                  rating < 10 && (
+                    <>
+                      <span>•</span>
+                      <div className='flex items-center gap-1'>
+                        <span className='text-[#FFD700]'>⭐</span>
+                        <span>{rating.toFixed(1)}</span>
+                        {/* Show IMDB icon when rating is from IMDB */}
+                        {show.imdb_rating !== undefined && (
+                          <IMDBIcon className='w-5 h-5' />
+                        )}
+                      </div>
+                    </>
+                  )
+                );
+              })()}
               {show.popularity !== undefined && (
                 <>
                   <span>•</span>
@@ -105,23 +235,25 @@ export default async function ShowDetailPage({ params }: ShowDetailPageProps) {
               )}
             </div>
 
-            <div className="mb-6">
-              <h2 className="text-2xl font-semibold mb-3 text-[#FFD700]">Overview</h2>
-              <p className="text-[#f2f2f1] text-lg leading-relaxed">
+            <div className='mb-6'>
+              <h2 className='text-2xl font-semibold mb-3 text-[#FFD700]'>
+                Overview
+              </h2>
+              <p className='text-[#f2f2f1] text-lg leading-relaxed'>
                 {show.overview || 'No overview available.'}
               </p>
             </div>
 
             {/* Watch Providers */}
-            <div className="mt-8">
-              <WatchProviders providers={watchProviders} countryCode="US" />
+            <div className='mt-8'>
+              <WatchProviders providers={watchProviders} countryCode='US' />
             </div>
           </div>
         </div>
 
         {/* Cast List */}
         {cast && cast.length > 0 && (
-          <div className="mt-8">
+          <div className='mt-8'>
             <CastList cast={cast} />
           </div>
         )}

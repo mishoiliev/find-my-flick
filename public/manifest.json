@@ -1,0 +1,17 @@
+{
+  "name": "Find my Flick",
+  "short_name": "Find my Flick",
+  "description": "Discover where to watch your favorite movies and TV shows",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#FFD700",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

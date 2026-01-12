@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
@@ -43,8 +44,15 @@ export default function Navbar() {
       <div className='container mx-auto px-4 py-4'>
         <Link
           href='/'
-          className='font-playfair text-2xl md:text-3xl font-bold bg-gradient-to-r from-[#FFE44D] via-[#FFD700] to-[#FFB300] bg-clip-text text-transparent hover:opacity-80 transition-opacity'
+          className='flex items-center gap-3 font-playfair text-2xl md:text-3xl font-bold bg-gradient-to-r from-[#FFE44D] via-[#FFD700] to-[#FFB300] bg-clip-text text-transparent hover:opacity-80 transition-opacity'
         >
+          <Image
+            src='/icon.svg'
+            alt='Find my Flick icon'
+            width={32}
+            height={32}
+            className='flex-shrink-0'
+          />
           Find my Flick
         </Link>
       </div>

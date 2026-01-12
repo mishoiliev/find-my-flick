@@ -100,3 +100,11 @@ export function getPopularShowsCacheKey(): string {
 export function getPopularActorsCacheKey(): string {
   return 'popular:actors';
 }
+
+export function getPopularMoviesCacheKey(): string {
+  return 'popular:movies';
+}
+
+export function getPopularTVShowsCacheKey(): string {
+  return 'popular:tv';
+}

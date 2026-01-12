@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Pagination from '@/components/Pagination';
 import SearchBar from '@/components/SearchBar';
 import ShowGrid from '@/components/ShowGrid';
@@ -5,6 +6,26 @@ import { searchShows, Show } from '@/lib/tmdb';
 
 interface SearchPageProps {
   searchParams: { q?: string; page?: string };
+}
+
+export async function generateMetadata({ searchParams }: SearchPageProps): Promise<Metadata> {
+  const query = searchParams.q || '';
+  
+  if (query.trim()) {
+    return {
+      title: `Search Results for "${query}"`,
+      description: `Find where to watch "${query}". Search results for movies and TV shows.`,
+      robots: {
+        index: true,
+        follow: true,
+      },
+    };
+  }
+
+  return {
+    title: 'Search Movies and TV Shows',
+    description: 'Search for movies and TV shows to find where to watch them online.',
+  };
 }
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
@@ -17,7 +38,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
 
   if (query.trim()) {
     try {
-      // Fetch only the current page (TMDB returns 20 results per page by default)
+      // Fetch results for current page (we need at least 36 items for 6x6 grid)
+      // Request more results to ensure we have enough after filtering/sorting
       const searchResult = await searchShows(query, currentPage, 100);
 
       allResults = searchResult.results;
@@ -68,7 +90,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
               </div>
               {allResults.length > 0 ? (
                 <>
-                  <ShowGrid shows={allResults} />
+                  <ShowGrid shows={allResults.slice(0, 36)} gridLayout="search" />
                   <Pagination
                     currentPage={currentPage}
                     totalPages={totalPages}

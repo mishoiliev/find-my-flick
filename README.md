@@ -39,7 +39,7 @@ bun install
 3. Create a `.env.local` file in the root directory:
 
 ```env
-NEXT_PUBLIC_TMDB_API_KEY=your_tmdb_api_key_here
+TMDB_API_KEY=your_tmdb_api_key_here
 ```
 
 4. Run the development server:

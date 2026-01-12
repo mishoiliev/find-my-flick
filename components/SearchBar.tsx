@@ -1,7 +1,8 @@
 'use client';
 
 import { performSearch, searchShowsAction } from '@/app/actions/search';
-import { Show, sortShowsByPopularity } from '@/lib/tmdb';
+import { Show, sortShowsByPopularity, getShowRating } from '@/lib/tmdb';
+import IMDBIcon from './IMDBIcon';
 import Fuse from 'fuse.js';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -287,11 +288,20 @@ export default function SearchBar() {
                   <span className='text-xs bg-[#FFD700] text-[#000000] px-2 py-1 rounded'>
                     {show.media_type === 'tv' ? 'TV' : 'Movie'}
                   </span>
-                  {show.vote_average > 0 && (
-                    <span className='text-xs text-[#FFD700]'>
-                      ⭐ {show.vote_average.toFixed(1)}
-                    </span>
-                  )}
+                  {(() => {
+                    // getShowRating prefers IMDB rating, falls back to TMDB vote_average
+                    const rating = getShowRating(show);
+                    return rating > 0 && rating < 10 && (
+                      <span className='text-xs text-[#FFD700] flex items-center gap-1'>
+                        <span>⭐</span>
+                        {rating.toFixed(1)}
+                        {/* Show IMDB icon when rating is from IMDB */}
+                        {show.imdb_rating !== undefined && (
+                          <IMDBIcon className="w-3 h-3" />
+                        )}
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
             </button>
