@@ -1,0 +1,4 @@
+# Bun configuration
+[install]
+# Use bun's native package manager
+auto = "auto"

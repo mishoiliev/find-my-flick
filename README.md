@@ -20,22 +20,26 @@ A modern streaming service aggregator app similar to JustWatch, with an improved
 ### Installation
 
 1. Clone the repository:
+
 ```bash
 git clone <your-repo-url>
-cd WhereToWatch
+cd find-my-flick
 ```
 
 2. Install dependencies:
+
 ```bash
 bun install
 ```
 
 3. Create a `.env.local` file in the root directory:
+
 ```env
 NEXT_PUBLIC_TMDB_API_KEY=your_tmdb_api_key_here
 ```
 
 4. Run the development server:
+
 ```bash
 bun run dev
 ```
@@ -73,6 +77,7 @@ WhereToWatch/
 ### Advanced Search
 
 The search functionality combines:
+
 - **Client-side fuzzy search** - Instant results as you type using Fuse.js
 - **Server-side search** - Comprehensive results from TMDB API
 - **Smart matching** - Searches titles, names, and overviews
@@ -102,4 +107,5 @@ MIT
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
 # find-my-flick
