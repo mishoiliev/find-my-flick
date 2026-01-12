@@ -1,3 +1,5 @@
+# ** DISCLAIMER: This is fully vibe coded as a part of a semi-experiment. Good practices are not displayed here and contributing would be a nightmare **
+
 # Find My Flick
 
 A modern streaming service aggregator app similar to JustWatch, with an improved search experience. Find where to watch your favorite movies and TV shows.
