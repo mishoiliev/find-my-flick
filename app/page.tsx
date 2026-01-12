@@ -1,6 +1,7 @@
 import SearchBar from '@/components/SearchBar';
 import ShowGrid from '@/components/ShowGrid';
 import { fetchPopularShows } from '@/lib/tmdb';
+import { Suspense } from 'react';
 
 export default async function Home() {
   const initialShows = await fetchPopularShows();
@@ -17,7 +18,13 @@ export default async function Home() {
           </p>
         </div>
 
-        <SearchBar />
+        <Suspense
+          fallback={
+            <div className='w-full max-w-3xl mx-auto h-16 bg-[#1a1a1a] rounded-full animate-pulse' />
+          }
+        >
+          <SearchBar />
+        </Suspense>
 
         <div className='mt-12'>
           <h2 className='text-3xl font-semibold text-[#FFD700] mb-6'>
