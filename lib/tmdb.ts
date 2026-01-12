@@ -338,7 +338,11 @@ function getBaseUrl(): string {
 
   // Use NEXT_PUBLIC_SITE_URL if available (set in environment variables)
   if (process.env.NEXT_PUBLIC_SITE_URL) {
-    const url = process.env.NEXT_PUBLIC_SITE_URL.trim();
+    let url = process.env.NEXT_PUBLIC_SITE_URL.trim();
+    // Ensure it has a protocol
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = `https://${url}`;
+    }
     // Ensure it doesn't end with a slash
     return url.endsWith('/') ? url.slice(0, -1) : url;
   }
