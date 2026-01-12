@@ -330,27 +330,61 @@ export function getProfileUrlLarge(profilePath: string | null): string {
 import { cache } from 'react';
 
 // Helper to get base URL for API calls (server-side only)
+// Uses relative URLs for internal API calls, which Next.js handles automatically
 function getBaseUrl(): string {
-  // In production, use VERCEL_URL if available
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
+  // In server components, we can use relative URLs for internal API routes
+  // Next.js will automatically resolve them to the correct absolute URL
+  // However, for some edge cases, we may need an absolute URL
+
+  // Use NEXT_PUBLIC_SITE_URL if available (set in environment variables)
+  if (process.env.NEXT_PUBLIC_SITE_URL) {
+    const url = process.env.NEXT_PUBLIC_SITE_URL.trim();
+    // Ensure it doesn't end with a slash
+    return url.endsWith('/') ? url.slice(0, -1) : url;
   }
+
+  // In Vercel production, use VERCEL_URL if available
+  if (process.env.VERCEL_URL) {
+    const vercelUrl = process.env.VERCEL_URL.trim();
+    // VERCEL_URL might already include protocol or might not
+    if (vercelUrl.startsWith('http://') || vercelUrl.startsWith('https://')) {
+      return vercelUrl;
+    }
+    return `https://${vercelUrl}`;
+  }
+
   // Fallback to localhost for development
-  return 'http://localhost:3000';
+  return process.env.NODE_ENV === 'production'
+    ? 'https://findmyflick.space'
+    : 'http://localhost:3000';
 }
 
 // Fetch popular shows (both movies and TV) with caching
 export const fetchPopularShows = cache(async (): Promise<Show[]> => {
   try {
-    const response = await fetch(`${getBaseUrl()}/api/tmdb/popular?type=all`, {
+    const baseUrl = getBaseUrl();
+    const url = `${baseUrl}/api/tmdb/popular?type=all`;
+    const response = await fetch(url, {
       next: { revalidate: 1800 },
+      // Add headers to ensure proper request handling
+      headers: {
+        'Content-Type': 'application/json',
+      },
     });
 
     if (!response.ok) {
-      throw new Error('Failed to fetch popular shows');
+      const errorText = await response.text().catch(() => 'Unknown error');
+      console.error(
+        `Failed to fetch popular shows: ${response.status} ${errorText}`
+      );
+      return [];
     }
 
     const data = await response.json();
+    if (!data.results) {
+      console.error('Invalid response format from API:', data);
+      return [];
+    }
     return data.results.map((show: any) =>
       normalizeShow(show, show.media_type || 'movie')
     );
@@ -363,18 +397,28 @@ export const fetchPopularShows = cache(async (): Promise<Show[]> => {
 // Fetch popular movies only with caching
 export const fetchPopularMovies = cache(async (): Promise<Show[]> => {
   try {
-    const response = await fetch(
-      `${getBaseUrl()}/api/tmdb/popular?type=movie`,
-      {
-        next: { revalidate: 1800 },
-      }
-    );
+    const baseUrl = getBaseUrl();
+    const url = `${baseUrl}/api/tmdb/popular?type=movie`;
+    const response = await fetch(url, {
+      next: { revalidate: 1800 },
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
 
     if (!response.ok) {
-      throw new Error('Failed to fetch popular movies');
+      const errorText = await response.text().catch(() => 'Unknown error');
+      console.error(
+        `Failed to fetch popular movies: ${response.status} ${errorText}`
+      );
+      return [];
     }
 
     const data = await response.json();
+    if (!data.results) {
+      console.error('Invalid response format from API:', data);
+      return [];
+    }
     return data.results.map((show: any) => normalizeShow(show, 'movie'));
   } catch (error) {
     console.error('Error fetching popular movies:', error);
@@ -407,15 +451,28 @@ export const fetchTopRatedMovies = cache(async (): Promise<Show[]> => {
 // Fetch popular TV shows only with caching
 export const fetchPopularTVShows = cache(async (): Promise<Show[]> => {
   try {
-    const response = await fetch(`${getBaseUrl()}/api/tmdb/popular?type=tv`, {
+    const baseUrl = getBaseUrl();
+    const url = `${baseUrl}/api/tmdb/popular?type=tv`;
+    const response = await fetch(url, {
       next: { revalidate: 1800 },
+      headers: {
+        'Content-Type': 'application/json',
+      },
     });
 
     if (!response.ok) {
-      throw new Error('Failed to fetch popular TV shows');
+      const errorText = await response.text().catch(() => 'Unknown error');
+      console.error(
+        `Failed to fetch popular TV shows: ${response.status} ${errorText}`
+      );
+      return [];
     }
 
     const data = await response.json();
+    if (!data.results) {
+      console.error('Invalid response format from API:', data);
+      return [];
+    }
     return data.results.map((show: any) => normalizeShow(show, 'tv'));
   } catch (error) {
     console.error('Error fetching popular TV shows:', error);
