@@ -1,3 +1,4 @@
+import { Analytics } from '@vercel/analytics/next';
 import Navbar from '@/components/Navbar';
 import '@/lib/fontawesome';
 import type { Metadata, Viewport } from 'next';
@@ -129,6 +130,7 @@ export default function RootLayout({
       >
         <Navbar />
         {children}
+        <Analytics />
       </body>
     </html>
   );
