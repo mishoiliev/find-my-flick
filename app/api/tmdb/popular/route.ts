@@ -1,38 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  getCachedImdbId,
+  getCachedImdbRating,
+  setCachedImdbId,
+} from '@/lib/imdb-cache';
 
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
-const OMDB_API_KEY = process.env.OMDB_API_KEY || '';
-const OMDB_BASE_URL = 'https://www.omdbapi.com';
-
-// Get IMDB rating from OMDB API
-async function getIMDBRating(imdbId: string): Promise<number | null> {
-  if (!OMDB_API_KEY) {
-    return null;
-  }
-
-  try {
-    const response = await fetch(
-      `${OMDB_BASE_URL}/?i=${imdbId}&apikey=${OMDB_API_KEY}`,
-      {
-        next: { revalidate: 3600 },
-      }
-    );
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const data = await response.json();
-    if (data.Response === 'True' && data.imdbRating) {
-      const rating = parseFloat(data.imdbRating);
-      return isNaN(rating) ? null : rating;
-    }
-    return null;
-  } catch (error) {
-    return null;
-  }
-}
 
 // Enrich show with IMDB rating
 async function enrichShowWithIMDBRating(
@@ -44,23 +18,30 @@ async function enrichShowWithIMDBRating(
   }
 
   try {
-    const externalIdsResponse = await fetch(
-      `${TMDB_BASE_URL}/${mediaType}/${show.id}/external_ids?api_key=${TMDB_API_KEY}`,
-      {
-        next: { revalidate: 3600 },
-      }
-    );
+    let imdbId = await getCachedImdbId(mediaType, show.id);
 
-    if (externalIdsResponse.ok) {
-      const externalIds = await externalIdsResponse.json();
-      const imdbId = externalIds.imdb_id;
-
-      if (imdbId) {
-        show.imdb_id = imdbId;
-        const imdbRating = await getIMDBRating(imdbId);
-        if (imdbRating !== null) {
-          show.imdb_rating = imdbRating;
+    if (!imdbId) {
+      const externalIdsResponse = await fetch(
+        `${TMDB_BASE_URL}/${mediaType}/${show.id}/external_ids?api_key=${TMDB_API_KEY}`,
+        {
+          next: { revalidate: 3600 },
         }
+      );
+
+      if (externalIdsResponse.ok) {
+        const externalIds = await externalIdsResponse.json();
+        imdbId = externalIds.imdb_id;
+        if (imdbId) {
+          await setCachedImdbId(mediaType, show.id, imdbId);
+        }
+      }
+    }
+
+    if (imdbId) {
+      show.imdb_id = imdbId;
+      const imdbRating = await getCachedImdbRating(imdbId);
+      if (imdbRating !== null) {
+        show.imdb_rating = imdbRating;
       }
     }
   } catch (error) {
@@ -95,71 +76,137 @@ async function enrichShowsWithIMDBRatings(
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const type = searchParams.get('type') || 'all'; // 'all', 'movie', 'tv'
+  const limit = parseInt(searchParams.get('limit') || '20', 10);
 
   try {
     let results: any[] = [];
 
     if (type === 'all') {
-      const [moviesRes, tvRes] = await Promise.all([
-        fetch(`${TMDB_BASE_URL}/movie/popular?api_key=${TMDB_API_KEY}`, {
-          next: { revalidate: 1800 },
-        }),
-        fetch(`${TMDB_BASE_URL}/tv/popular?api_key=${TMDB_API_KEY}`, {
-          next: { revalidate: 1800 },
-        }),
-      ]);
+      // Fetch multiple pages if needed to get enough results
+      const pagesNeeded = Math.ceil(limit / 20);
+      const fetchPromises: Promise<any>[] = [];
+      
+      for (let page = 1; page <= pagesNeeded; page++) {
+        fetchPromises.push(
+          fetch(`${TMDB_BASE_URL}/movie/popular?api_key=${TMDB_API_KEY}&page=${page}`, {
+            next: { revalidate: 1800 },
+          }),
+          fetch(`${TMDB_BASE_URL}/tv/popular?api_key=${TMDB_API_KEY}&page=${page}`, {
+            next: { revalidate: 1800 },
+          })
+        );
+      }
 
-      const moviesData = await moviesRes.json();
-      const tvData = await tvRes.json();
+      const responses = await Promise.all(fetchPromises);
+      const allMovies: any[] = [];
+      const allTVShows: any[] = [];
 
-      const movies = moviesData.results.map((m: any) => ({
+      // Process responses in pairs (movie, tv)
+      for (let i = 0; i < responses.length; i += 2) {
+        const moviesRes = responses[i];
+        const tvRes = responses[i + 1];
+
+        if (moviesRes && moviesRes.ok) {
+          const moviesData = await moviesRes.json();
+          allMovies.push(...(moviesData.results || []));
+        }
+        if (tvRes && tvRes.ok) {
+          const tvData = await tvRes.json();
+          allTVShows.push(...(tvData.results || []));
+        }
+      }
+
+      const movies = allMovies.map((m: any) => ({
         ...m,
         media_type: 'movie',
         title: m.title || m.name,
         name: m.name || m.title,
       }));
 
-      const tvShows = tvData.results.map((t: any) => ({
+      const tvShows = allTVShows.map((t: any) => ({
         ...t,
         media_type: 'tv',
         title: t.name || t.title,
         name: t.name || t.title,
       }));
 
-      results = [...movies, ...tvShows].slice(0, 20);
-    } else if (type === 'movie') {
-      const response = await fetch(
-        `${TMDB_BASE_URL}/movie/popular?api_key=${TMDB_API_KEY}`,
-        {
-          next: { revalidate: 1800 },
+      // Combine, remove duplicates, sort by popularity, and limit
+      const combined = [...movies, ...tvShows];
+      const seen = new Set<string>();
+      const unique = combined.filter((show) => {
+        const key = `${show.media_type}-${show.id}`;
+        if (seen.has(key)) {
+          return false;
         }
-      );
+        seen.add(key);
+        return true;
+      });
 
-      const data = await response.json();
-      results = data.results.map((m: any) => ({
-        ...m,
-        media_type: 'movie',
-        title: m.title || m.name,
-        name: m.name || m.title,
-      }));
+      unique.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+      results = unique.slice(0, limit);
+    } else if (type === 'movie') {
+      const pagesNeeded = Math.ceil(limit / 20);
+      const fetchPromises: Promise<Response>[] = [];
+      
+      for (let page = 1; page <= pagesNeeded; page++) {
+        fetchPromises.push(
+          fetch(`${TMDB_BASE_URL}/movie/popular?api_key=${TMDB_API_KEY}&page=${page}`, {
+            next: { revalidate: 1800 },
+          })
+        );
+      }
+
+      const responses = await Promise.all(fetchPromises);
+      const allResults: any[] = [];
+
+      for (const res of responses) {
+        if (res.ok) {
+          const data = await res.json();
+          allResults.push(...data.results);
+        }
+      }
+
+      results = allResults
+        .map((m: any) => ({
+          ...m,
+          media_type: 'movie',
+          title: m.title || m.name,
+          name: m.name || m.title,
+        }))
+        .slice(0, limit);
 
       // Enrich with IMDB ratings
       results = await enrichShowsWithIMDBRatings(results, 'movie');
     } else if (type === 'tv') {
-      const response = await fetch(
-        `${TMDB_BASE_URL}/tv/popular?api_key=${TMDB_API_KEY}`,
-        {
-          next: { revalidate: 1800 },
-        }
-      );
+      const pagesNeeded = Math.ceil(limit / 20);
+      const fetchPromises: Promise<Response>[] = [];
+      
+      for (let page = 1; page <= pagesNeeded; page++) {
+        fetchPromises.push(
+          fetch(`${TMDB_BASE_URL}/tv/popular?api_key=${TMDB_API_KEY}&page=${page}`, {
+            next: { revalidate: 1800 },
+          })
+        );
+      }
 
-      const data = await response.json();
-      results = data.results.map((t: any) => ({
-        ...t,
-        media_type: 'tv',
-        title: t.name || t.title,
-        name: t.name || t.title,
-      }));
+      const responses = await Promise.all(fetchPromises);
+      const allResults: any[] = [];
+
+      for (const res of responses) {
+        if (res.ok) {
+          const data = await res.json();
+          allResults.push(...data.results);
+        }
+      }
+
+      results = allResults
+        .map((t: any) => ({
+          ...t,
+          media_type: 'tv',
+          title: t.name || t.title,
+          name: t.name || t.title,
+        }))
+        .slice(0, limit);
 
       // Enrich with IMDB ratings
       results = await enrichShowsWithIMDBRatings(results, 'tv');

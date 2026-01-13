@@ -10,7 +10,6 @@ import {
   getShowDetails,
   getShowRating,
   getShowTitle,
-  getWatchProviders,
 } from '@/lib/tmdb';
 import type { Metadata } from 'next';
 import Image from 'next/image';
@@ -108,9 +107,8 @@ export default async function ShowDetailPage({ params }: ShowDetailPageProps) {
     notFound();
   }
 
-  const [show, watchProviders, cast] = await Promise.all([
+  const [show, cast] = await Promise.all([
     getShowDetails(showId, mediaType),
-    getWatchProviders(showId, mediaType, 'US'), // Default to US, can be made dynamic
     getShowCredits(showId, mediaType),
   ]);
 
@@ -235,6 +233,20 @@ export default async function ShowDetailPage({ params }: ShowDetailPageProps) {
               )}
             </div>
 
+            {/* Genres */}
+            {show.genres && show.genres.length > 0 && (
+              <div className='flex flex-wrap gap-2 mb-6'>
+                {show.genres.map((genre) => (
+                  <span
+                    key={genre.id}
+                    className='px-3 py-1 bg-[#1a1a1a] border border-[#FFD700]/30 text-[#FFD700] rounded-full text-sm font-medium'
+                  >
+                    {genre.name}
+                  </span>
+                ))}
+              </div>
+            )}
+
             <div className='mb-6'>
               <h2 className='text-2xl font-semibold mb-3 text-[#FFD700]'>
                 Overview
@@ -246,7 +258,7 @@ export default async function ShowDetailPage({ params }: ShowDetailPageProps) {
 
             {/* Watch Providers */}
             <div className='mt-8'>
-              <WatchProviders providers={watchProviders} countryCode='US' />
+              <WatchProviders showId={showId} mediaType={mediaType} />
             </div>
           </div>
         </div>

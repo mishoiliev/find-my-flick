@@ -1,6 +1,11 @@
 // Types and utility functions only - NO API KEYS OR FETCH CALLS
 // All API calls should go through /app/api/tmdb/* routes
 
+export interface Genre {
+  id: number;
+  name: string;
+}
+
 export interface Show {
   id: number;
   title: string;
@@ -20,6 +25,7 @@ export interface Show {
   episode_count?: number; // Number of episodes actor appeared in (for TV shows)
   imdb_rating?: number; // IMDB rating (0-10 scale)
   imdb_id?: string; // IMDB ID (e.g., "tt0111161")
+  genres?: Genre[]; // Genres for the show
 }
 
 export interface TMDBResponse {
@@ -64,16 +70,82 @@ export interface ActorResponse {
   total_results: number;
 }
 
+// Genre mappings for movies and TV shows (from TMDB API)
+export const MOVIE_GENRES: Record<number, string> = {
+  28: 'Action',
+  12: 'Adventure',
+  16: 'Animation',
+  35: 'Comedy',
+  80: 'Crime',
+  99: 'Documentary',
+  18: 'Drama',
+  10751: 'Family',
+  14: 'Fantasy',
+  36: 'History',
+  27: 'Horror',
+  10402: 'Music',
+  9648: 'Mystery',
+  10749: 'Romance',
+  878: 'Science Fiction',
+  10770: 'TV Movie',
+  53: 'Thriller',
+  10752: 'War',
+  37: 'Western',
+};
+
+export const TV_GENRES: Record<number, string> = {
+  10759: 'Action & Adventure',
+  16: 'Animation',
+  35: 'Comedy',
+  80: 'Crime',
+  99: 'Documentary',
+  18: 'Drama',
+  10751: 'Family',
+  10762: 'Kids',
+  9648: 'Mystery',
+  10763: 'News',
+  10764: 'Reality',
+  10765: 'Sci-Fi & Fantasy',
+  10766: 'Soap',
+  10767: 'Talk',
+  10768: 'War & Politics',
+  37: 'Western',
+};
+
+// Convert genre_ids array to Genre objects
+function convertGenreIdsToGenres(
+  genreIds: number[] | undefined,
+  mediaType: 'movie' | 'tv'
+): Genre[] | undefined {
+  if (!genreIds || genreIds.length === 0) {
+    return undefined;
+  }
+
+  const genreMap = mediaType === 'movie' ? MOVIE_GENRES : TV_GENRES;
+  return genreIds
+    .map((id) => {
+      const name = genreMap[id];
+      return name ? { id, name } : null;
+    })
+    .filter((genre): genre is Genre => genre !== null);
+}
+
 // Normalize a show object to ensure consistency across all pages
 // This ensures all Show objects have the same structure regardless of source
 export function normalizeShow(
-  show: Partial<Show>,
+  show: Partial<Show> & { genre_ids?: number[] },
   mediaType: 'movie' | 'tv'
 ): Show {
   // TMDB returns 'title' for movies and 'name' for TV shows
   // We ensure both fields are populated for consistency
   const title = show.title || show.name || '';
   const name = show.name || show.title || undefined;
+
+  // Handle genres: prefer full genres array, fall back to converting genre_ids
+  let genres: Genre[] | undefined = show.genres;
+  if (!genres && show.genre_ids) {
+    genres = convertGenreIdsToGenres(show.genre_ids, mediaType);
+  }
 
   return {
     id: show.id!,
@@ -94,6 +166,7 @@ export function normalizeShow(
     episode_count: show.episode_count,
     imdb_rating: show.imdb_rating,
     imdb_id: show.imdb_id,
+    genres,
   };
 }
 
@@ -364,39 +437,41 @@ function getBaseUrl(): string {
 }
 
 // Fetch popular shows (both movies and TV) with caching
-export const fetchPopularShows = cache(async (): Promise<Show[]> => {
-  try {
-    const baseUrl = getBaseUrl();
-    const url = `${baseUrl}/api/tmdb/popular?type=all`;
-    const response = await fetch(url, {
-      next: { revalidate: 1800 },
-      // Add headers to ensure proper request handling
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
+export const fetchPopularShows = cache(
+  async (limit: number = 20): Promise<Show[]> => {
+    try {
+      const baseUrl = getBaseUrl();
+      const url = `${baseUrl}/api/tmdb/popular?type=all&limit=${limit}`;
+      const response = await fetch(url, {
+        next: { revalidate: 1800 },
+        // Add headers to ensure proper request handling
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Unknown error');
-      console.error(
-        `Failed to fetch popular shows: ${response.status} ${errorText}`
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.error(
+          `Failed to fetch popular shows: ${response.status} ${errorText}`
+        );
+        return [];
+      }
+
+      const data = await response.json();
+      if (!data.results) {
+        console.error('Invalid response format from API:', data);
+        return [];
+      }
+      return data.results.map((show: any) =>
+        normalizeShow(show, show.media_type || 'movie')
       );
+    } catch (error) {
+      console.error('Error fetching popular shows:', error);
       return [];
     }
-
-    const data = await response.json();
-    if (!data.results) {
-      console.error('Invalid response format from API:', data);
-      return [];
-    }
-    return data.results.map((show: any) =>
-      normalizeShow(show, show.media_type || 'movie')
-    );
-  } catch (error) {
-    console.error('Error fetching popular shows:', error);
-    return [];
   }
-});
+);
 
 // Fetch popular movies only with caching
 export const fetchPopularMovies = cache(async (): Promise<Show[]> => {
@@ -574,6 +649,43 @@ export async function searchShows(
     return { results: [], page: 1, total_pages: 0, total_results: 0 };
   }
 }
+
+// Discover shows by genre with caching
+// Directly calls the discover logic instead of making HTTP request
+export const discoverShowsByGenre = cache(
+  async (
+    genreIds: number[],
+    type: 'all' | 'movie' | 'tv' = 'all',
+    page: number = 1,
+    maxResults: number = 50
+  ): Promise<TMDBResponse> => {
+    try {
+      const { discoverShowsByGenreLogic } = await import('./discover');
+      const genreIdsString = genreIds.map(String);
+      const result = await discoverShowsByGenreLogic(
+        genreIdsString,
+        type,
+        String(page),
+        maxResults
+      );
+
+      return {
+        results: result.results.map((show: any) =>
+          normalizeShow(show, show.media_type || 'movie')
+        ),
+        page: result.page,
+        total_pages: result.total_pages,
+        total_results: result.total_results,
+      };
+    } catch (error) {
+      console.error('Error discovering shows by genre:', error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      console.error('Full error details:', errorMessage);
+      return { results: [], page: 1, total_pages: 0, total_results: 0 };
+    }
+  }
+);
 
 // Get show details with caching and IMDB rating
 export const getShowDetails = cache(

@@ -1,38 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  getCachedImdbId,
+  getCachedImdbRating,
+  setCachedImdbId,
+} from '@/lib/imdb-cache';
 
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
-const OMDB_API_KEY = process.env.OMDB_API_KEY || '';
-const OMDB_BASE_URL = 'https://www.omdbapi.com';
-
-// Get IMDB rating from OMDB API
-async function getIMDBRating(imdbId: string): Promise<number | null> {
-  if (!OMDB_API_KEY) {
-    return null;
-  }
-
-  try {
-    const response = await fetch(
-      `${OMDB_BASE_URL}/?i=${imdbId}&apikey=${OMDB_API_KEY}`,
-      {
-        next: { revalidate: 3600 },
-      }
-    );
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const data = await response.json();
-    if (data.Response === 'True' && data.imdbRating) {
-      const rating = parseFloat(data.imdbRating);
-      return isNaN(rating) ? null : rating;
-    }
-    return null;
-  } catch (error) {
-    return null;
-  }
-}
 
 // Enrich show with IMDB rating
 async function enrichShowWithIMDBRating(
@@ -44,23 +18,30 @@ async function enrichShowWithIMDBRating(
   }
 
   try {
-    const externalIdsResponse = await fetch(
-      `${TMDB_BASE_URL}/${mediaType}/${show.id}/external_ids?api_key=${TMDB_API_KEY}`,
-      {
-        next: { revalidate: 3600 },
-      }
-    );
+    let imdbId = await getCachedImdbId(mediaType, show.id);
 
-    if (externalIdsResponse.ok) {
-      const externalIds = await externalIdsResponse.json();
-      const imdbId = externalIds.imdb_id;
-
-      if (imdbId) {
-        show.imdb_id = imdbId;
-        const imdbRating = await getIMDBRating(imdbId);
-        if (imdbRating !== null) {
-          show.imdb_rating = imdbRating;
+    if (!imdbId) {
+      const externalIdsResponse = await fetch(
+        `${TMDB_BASE_URL}/${mediaType}/${show.id}/external_ids?api_key=${TMDB_API_KEY}`,
+        {
+          next: { revalidate: 3600 },
         }
+      );
+
+      if (externalIdsResponse.ok) {
+        const externalIds = await externalIdsResponse.json();
+        imdbId = externalIds.imdb_id;
+        if (imdbId) {
+          await setCachedImdbId(mediaType, show.id, imdbId);
+        }
+      }
+    }
+
+    if (imdbId) {
+      show.imdb_id = imdbId;
+      const imdbRating = await getCachedImdbRating(imdbId);
+      if (imdbRating !== null) {
+        show.imdb_rating = imdbRating;
       }
     }
   } catch (error) {

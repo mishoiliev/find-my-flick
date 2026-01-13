@@ -1,4 +1,8 @@
 {
-  "buildCommand": "bun run build",
-  "installCommand": "bun install"
+  "crons": [
+    {
+      "path": "/api/cron/imdb-cache",
+      "schedule": "0 3 * * *"
+    }
+  ]
 }

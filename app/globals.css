@@ -47,4 +47,22 @@
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 215, 0, 0.2) #0a0a0a;
   }
+
+  /* Biography collapsed shadow effect */
+  .biography-collapsed {
+    mask-image: linear-gradient(to bottom, black calc(100% - 2em), transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 2em), transparent 100%);
+    position: relative;
+  }
+
+  .biography-collapsed::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2em;
+    background: linear-gradient(to bottom, transparent, rgba(10, 10, 10, 0.8));
+    pointer-events: none;
+  }
 }

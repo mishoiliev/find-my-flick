@@ -70,9 +70,23 @@ export default function ShowCard({
             </h3>
           </div>
 
-          {/* Year and Rating - at bottom with padding, only visible on hover */}
+          {/* Genres, Year and Rating - at bottom with padding, only visible on hover */}
           {/* Rating displays IMDB rating when available (via getShowRating) */}
           <div className='absolute bottom-0 left-0 right-0 p-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300'>
+            {/* Genres - centered above year/rating */}
+            {show.genres && show.genres.length > 0 && (
+              <div className='flex flex-wrap gap-1 justify-center mb-2'>
+                {show.genres.slice(0, 2).map((genre) => (
+                  <span
+                    key={genre.id}
+                    className='px-2 py-0.5 bg-[#1a1a1a]/80 border border-[#FFD700]/30 text-[#FFD700] rounded text-[10px] font-medium'
+                  >
+                    {genre.name}
+                  </span>
+                ))}
+              </div>
+            )}
+            {/* Year and Rating */}
             <div className='flex items-center justify-between text-xs text-[#f2f2f1]'>
               <span>{date.split('-')[0]}</span>
               {rating > 0 && rating < 10 && (

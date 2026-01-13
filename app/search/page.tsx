@@ -2,14 +2,32 @@ import type { Metadata } from 'next';
 import Pagination from '@/components/Pagination';
 import SearchBar from '@/components/SearchBar';
 import ShowGrid from '@/components/ShowGrid';
-import { searchShows, Show } from '@/lib/tmdb';
+import SearchContent from '@/components/SearchContent';
+import { searchShows, discoverShowsByGenre, fetchPopularShows, Show, MOVIE_GENRES, TV_GENRES, Genre } from '@/lib/tmdb';
 
 interface SearchPageProps {
-  searchParams: { q?: string; page?: string };
+  searchParams: { q?: string; page?: string; genres?: string; type?: string };
 }
 
 export async function generateMetadata({ searchParams }: SearchPageProps): Promise<Metadata> {
   const query = searchParams.q || '';
+  const genres = searchParams.genres;
+  
+  if (genres) {
+    const genreIds = genres.split(',').map(id => parseInt(id.trim())).filter(Boolean);
+    const type = searchParams.type || 'all';
+    const genreMap = type === 'movie' ? MOVIE_GENRES : type === 'tv' ? TV_GENRES : { ...MOVIE_GENRES, ...TV_GENRES };
+    const genreNames = genreIds.map(id => genreMap[id]).filter(Boolean).join(', ');
+    
+    return {
+      title: `Browse ${genreNames} - Find my Flick`,
+      description: `Browse top ${genreNames} movies and TV shows. Find where to watch them online.`,
+      robots: {
+        index: true,
+        follow: true,
+      },
+    };
+  }
   
   if (query.trim()) {
     return {
@@ -30,23 +48,83 @@ export async function generateMetadata({ searchParams }: SearchPageProps): Promi
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
   const query = searchParams.q || '';
+  const genres = searchParams.genres;
+  const type = (searchParams.type || 'all') as 'all' | 'movie' | 'tv';
   const currentPage = parseInt(searchParams.page || '1', 10);
 
   let allResults: Show[] = [];
   let totalPages = 0;
   let totalResults = 0;
+  let selectedGenreIds: number[] = [];
 
-  if (query.trim()) {
+  // Get available genres based on type
+  const getAvailableGenres = (): Genre[] => {
+    let genreMap: Record<number, string>;
+    if (type === 'movie') {
+      genreMap = MOVIE_GENRES;
+    } else if (type === 'tv') {
+      genreMap = TV_GENRES;
+    } else {
+      // Combine all genres, preferring movie names for duplicates
+      // Start with movie genres, then add TV genres (TV will only add unique IDs)
+      genreMap = { ...MOVIE_GENRES, ...TV_GENRES };
+    }
+    return Object.entries(genreMap)
+      .map(([id, name]) => ({ id: parseInt(id), name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  };
+
+  const availableGenres = getAvailableGenres();
+
+  if (genres) {
+    // Fetch shows by genre
+    selectedGenreIds = genres
+      .split(',')
+      .map((id) => parseInt(id.trim()))
+      .filter((id) => !isNaN(id));
+
+    if (selectedGenreIds.length > 0) {
+      try {
+        // Default to 'all' if no type specified
+        const discoverType = type || 'all';
+        const discoverResult = await discoverShowsByGenre(
+          selectedGenreIds,
+          discoverType,
+          currentPage,
+          50
+        );
+
+        allResults = discoverResult.results || [];
+        totalPages = discoverResult.total_pages || 0;
+        totalResults = discoverResult.total_results || 0;
+      } catch (error) {
+        console.error('Error fetching shows by genre:', error);
+        allResults = [];
+        totalPages = 0;
+        totalResults = 0;
+      }
+    }
+  } else if (query.trim()) {
+    // Regular search
     try {
-      // Fetch results for current page (we need at least 36 items for 6x6 grid)
-      // Request more results to ensure we have enough after filtering/sorting
       const searchResult = await searchShows(query, currentPage, 100);
-
       allResults = searchResult.results;
       totalPages = searchResult.total_pages;
       totalResults = searchResult.total_results;
     } catch (error) {
       console.error('Error fetching search results:', error);
+    }
+  } else {
+    // No genres and no query - show top 50 popular shows
+    try {
+      allResults = await fetchPopularShows(50);
+      totalResults = allResults.length;
+      totalPages = 1;
+    } catch (error) {
+      console.error('Error fetching popular shows:', error);
+      allResults = [];
+      totalResults = 0;
+      totalPages = 0;
     }
   }
 
@@ -71,6 +149,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
 
         <div className='mt-12'>
           {query.trim() ? (
+            // For search queries, use server-side rendering with pagination
             <>
               <div className='mb-6'>
                 <h2 className='text-3xl font-semibold text-[#FFD700] mb-2'>
@@ -106,14 +185,18 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
               )}
             </>
           ) : (
-            <div className='text-center py-12'>
-              <p className='text-[#f2f2f1] text-lg'>
-                Enter a search query to find movies and TV shows
-              </p>
-            </div>
+            // For genre browsing and popular shows, use client-side component
+            <SearchContent
+              initialShows={allResults}
+              selectedGenreIds={selectedGenreIds}
+              type={type}
+              initialTotalResults={totalResults}
+              availableGenres={availableGenres}
+            />
           )}
         </div>
       </div>
     </main>
   );
 }
+

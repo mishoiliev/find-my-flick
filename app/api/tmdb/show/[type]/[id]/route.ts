@@ -1,38 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getCachedImdbRating } from '@/lib/imdb-cache';
 
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
-const OMDB_API_KEY = process.env.OMDB_API_KEY || '';
-const OMDB_BASE_URL = 'https://www.omdbapi.com';
-
-// Get IMDB rating from OMDB API
-async function getIMDBRating(imdbId: string): Promise<number | null> {
-  if (!OMDB_API_KEY) {
-    return null;
-  }
-
-  try {
-    const response = await fetch(
-      `${OMDB_BASE_URL}/?i=${imdbId}&apikey=${OMDB_API_KEY}`,
-      {
-        next: { revalidate: 3600 },
-      }
-    );
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const data = await response.json();
-    if (data.Response === 'True' && data.imdbRating) {
-      const rating = parseFloat(data.imdbRating);
-      return isNaN(rating) ? null : rating;
-    }
-    return null;
-  } catch (error) {
-    return null;
-  }
-}
 
 export async function GET(
   request: NextRequest,
@@ -79,7 +49,7 @@ export async function GET(
 
       if (imdbId) {
         show.imdb_id = imdbId;
-        const imdbRating = await getIMDBRating(imdbId);
+        const imdbRating = await getCachedImdbRating(imdbId);
         if (imdbRating !== null) {
           show.imdb_rating = imdbRating;
         }
