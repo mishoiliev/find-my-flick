@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  getCachedImdbId,
-  getCachedImdbRating,
-  getImdbRatingWithCache,
+  getCachedImdbIds,
+  getCachedImdbRatings,
   getCronState,
   isImdbCacheEnabled,
   incrementOmdbUsage,
-  setCachedImdbId,
+  setCachedImdbIds,
+  setCachedImdbRatings,
   setCronState,
 } from '@/lib/imdb-cache';
 
@@ -98,33 +98,6 @@ async function fetchOmdbRating(imdbId: string): Promise<number | null> {
   }
 }
 
-async function getImdbIdForTitle(
-  title: PopularTitle
-): Promise<string | null> {
-  const cached = await getCachedImdbId(title.media_type, title.id);
-  if (cached) {
-    return cached;
-  }
-
-  const response = await fetch(
-    `${TMDB_BASE_URL}/${title.media_type}/${title.id}/external_ids?api_key=${TMDB_API_KEY}`,
-    {
-      next: { revalidate: 3600 },
-    }
-  );
-
-  if (!response.ok) {
-    return null;
-  }
-
-  const data = await response.json();
-  const imdbId = data.imdb_id;
-  if (imdbId) {
-    await setCachedImdbId(title.media_type, title.id, imdbId);
-  }
-  return imdbId || null;
-}
-
 export async function GET(request: NextRequest) {
   if (!isAuthorizedCron(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -205,22 +178,81 @@ export async function GET(request: NextRequest) {
       }
 
       const chunk = titles.slice(i, i + REQUEST_CONCURRENCY);
-      const results = await Promise.all(
+      const movieIds = chunk
+        .filter((item) => item.media_type === 'movie')
+        .map((item) => item.id);
+      const tvIds = chunk
+        .filter((item) => item.media_type === 'tv')
+        .map((item) => item.id);
+
+      const [movieMappings, tvMappings] = await Promise.all([
+        movieIds.length ? getCachedImdbIds('movie', movieIds) : new Map(),
+        tvIds.length ? getCachedImdbIds('tv', tvIds) : new Map(),
+      ]);
+
+      const newMovieMappings = new Map<number, string>();
+      const newTvMappings = new Map<number, string>();
+
+      const imdbIdsByTitle = await Promise.all(
         chunk.map(async (title) => {
-          const imdbId = await getImdbIdForTitle(title);
+          const cachedMappings =
+            title.media_type === 'movie' ? movieMappings : tvMappings;
+          let imdbId = cachedMappings.get(title.id) || null;
+
+          if (!imdbId) {
+            const response = await fetch(
+              `${TMDB_BASE_URL}/${title.media_type}/${title.id}/external_ids?api_key=${TMDB_API_KEY}`,
+              {
+                next: { revalidate: 3600 },
+              }
+            );
+
+            if (response.ok) {
+              const data = await response.json();
+              imdbId = data.imdb_id || null;
+              if (imdbId) {
+                if (title.media_type === 'movie') {
+                  newMovieMappings.set(title.id, imdbId);
+                } else {
+                  newTvMappings.set(title.id, imdbId);
+                }
+              }
+            }
+          }
+
+          return { title, imdbId };
+        })
+      );
+
+      await Promise.all([
+        newMovieMappings.size ? setCachedImdbIds('movie', newMovieMappings) : null,
+        newTvMappings.size ? setCachedImdbIds('tv', newTvMappings) : null,
+      ]);
+
+      const imdbIds = imdbIdsByTitle
+        .filter((item) => item.imdbId)
+        .map((item) => item.imdbId as string);
+      const cachedRatingsMap = imdbIds.length
+        ? await getCachedImdbRatings(imdbIds)
+        : new Map<string, number>();
+
+      const ratingsToWrite = new Map<string, number>();
+      await Promise.all(
+        imdbIdsByTitle.map(async ({ imdbId }) => {
           if (!imdbId) {
             missingImdbId += 1;
             return;
           }
 
-          const cached = await getCachedImdbRating(imdbId);
-          if (cached !== null) {
+          const cached = cachedRatingsMap.get(imdbId);
+          if (cached !== undefined) {
             cachedRatings += 1;
             return;
           }
 
-          const rating = await getImdbRatingWithCache(imdbId, fetchOmdbRating);
+          const rating = await fetchOmdbRating(imdbId);
           if (rating !== null) {
+            ratingsToWrite.set(imdbId, rating);
             fetchedRatings += 1;
             newRatings += 1;
           } else {
@@ -229,7 +261,11 @@ export async function GET(request: NextRequest) {
         })
       );
 
-      processed += results.length;
+      if (ratingsToWrite.size > 0) {
+        await setCachedImdbRatings(ratingsToWrite);
+      }
+
+      processed += chunk.length;
     }
   }
 
