@@ -130,7 +130,14 @@ export default function RootLayout({
       >
         <Navbar />
         {children}
-        <Analytics />
+        <Analytics
+          beforeSend={(event) => {
+            const skip = localStorage.getItem('skipAnalytics') === '1';
+            if (skip) return null; // drop the event
+            return event;
+          }}
+          mode='production'
+        />
       </body>
     </html>
   );
