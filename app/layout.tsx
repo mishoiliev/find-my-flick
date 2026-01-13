@@ -1,7 +1,7 @@
+import AnalyticsWrapper from '@/components/AnalyticsWrapper';
 import Navbar from '@/components/Navbar';
 import '@/lib/fontawesome';
 import { getSiteUrl } from '@/lib/site';
-import { Analytics } from '@vercel/analytics/next';
 import type { Metadata, Viewport } from 'next';
 import { Inter, Playfair_Display } from 'next/font/google';
 import './globals.css';
@@ -144,14 +144,7 @@ export default function RootLayout({
           type='application/ld+json'
           dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd) }}
         />
-        <Analytics
-          beforeSend={(event) => {
-            const skip = localStorage.getItem('skipAnalytics') === '1';
-            if (skip) return null; // drop the event
-            return event;
-          }}
-          mode='production'
-        />
+        <AnalyticsWrapper />
       </body>
     </html>
   );

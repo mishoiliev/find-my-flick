@@ -2,8 +2,8 @@
 
 import { Genre, MOVIE_GENRES, TV_GENRES } from '@/lib/tmdb';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useCallback, useMemo } from 'react';
 import GenreFilter from './GenreFilter';
-import { useCallback } from 'react';
 
 export default function BrowseByGenre() {
   const router = useRouter();
@@ -34,33 +34,41 @@ export default function BrowseByGenre() {
 
   // Get selected genres from URL
   const selectedGenresParam = searchParams.get('genres');
-  const selectedGenres = selectedGenresParam
-    ? selectedGenresParam.split(',').map((id) => parseInt(id.trim())).filter((id) => !isNaN(id))
-    : [];
+  const selectedGenres = useMemo(() => {
+    return selectedGenresParam
+      ? selectedGenresParam
+          .split(',')
+          .map((id) => parseInt(id.trim()))
+          .filter((id) => !isNaN(id))
+      : [];
+  }, [selectedGenresParam]);
 
-  const handleGenreToggle = useCallback((genreId: number) => {
-    const currentGenres = selectedGenres;
-    const newGenres = currentGenres.includes(genreId)
-      ? currentGenres.filter((id) => id !== genreId)
-      : [...currentGenres, genreId];
+  const handleGenreToggle = useCallback(
+    (genreId: number) => {
+      const currentGenres = selectedGenres;
+      const newGenres = currentGenres.includes(genreId)
+        ? currentGenres.filter((id) => id !== genreId)
+        : [...currentGenres, genreId];
 
-    // Update URL with new genres
-    const params = new URLSearchParams(searchParams.toString());
-    if (newGenres.length > 0) {
-      params.set('genres', newGenres.join(','));
-    } else {
-      params.delete('genres');
-    }
-    
-    // Update URL - navigate to root if no params, otherwise include params
-    const newUrl = params.toString() ? `/?${params.toString()}` : '/';
-    router.push(newUrl, { scroll: false });
-  }, [selectedGenres, searchParams, router]);
+      // Update URL with new genres
+      const params = new URLSearchParams(searchParams.toString());
+      if (newGenres.length > 0) {
+        params.set('genres', newGenres.join(','));
+      } else {
+        params.delete('genres');
+      }
+
+      // Update URL - navigate to root if no params, otherwise include params
+      const newUrl = params.toString() ? `/?${params.toString()}` : '/';
+      router.push(newUrl, { scroll: false });
+    },
+    [selectedGenres, searchParams, router]
+  );
 
   const handleClearAll = useCallback(() => {
     const params = new URLSearchParams(searchParams.toString());
     params.delete('genres');
-    
+
     // Navigate to root if no params left, otherwise keep other params
     const newUrl = params.toString() ? `/?${params.toString()}` : '/';
     router.push(newUrl, { scroll: false });
