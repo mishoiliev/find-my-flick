@@ -1,7 +1,9 @@
 import CastList from '@/components/CastList';
 import HypeMeter from '@/components/HypeMeter';
 import IMDBIcon from '@/components/IMDBIcon';
+import JsonLd from '@/components/JsonLd';
 import WatchProviders from '@/components/WatchProviders';
+import { getSiteUrl } from '@/lib/site';
 import {
   getBackdropUrl,
   getPosterUrl,
@@ -49,8 +51,8 @@ export async function generateMetadata({
     `Find where to watch ${title}. Discover streaming platforms, rental options, and purchase locations.`;
   const posterUrl = getPosterUrl(show.poster_path);
   const backdropUrl = getBackdropUrl(show.backdrop_path);
-  const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL?.trim() || 'https://findmyflick.space';
+  const siteUrl = getSiteUrl().toString();
+  const canonicalUrl = `${siteUrl}/show/${type}/${id}`;
 
   const keywords = [
     title,
@@ -69,11 +71,14 @@ export async function generateMetadata({
     title: `${title} - Where to Watch`,
     description,
     keywords,
+    alternates: {
+      canonical: canonicalUrl,
+    },
     openGraph: {
       title: `${title} - Where to Watch | Find my Flick`,
       description,
-      type: 'video.movie',
-      url: `${siteUrl}/show/${type}/${id}`,
+      type: mediaType === 'tv' ? 'video.tv_show' : 'video.movie',
+      url: canonicalUrl,
       images: [
         {
           url: backdropUrl || posterUrl,
@@ -120,6 +125,11 @@ export default async function ShowDetailPage({ params }: ShowDetailPageProps) {
   const dateString = getShowDate(show);
   const posterUrl = getPosterUrl(show.poster_path);
   const backdropUrl = getBackdropUrl(show.backdrop_path);
+  const siteUrl = getSiteUrl().toString();
+  const canonicalUrl = `${siteUrl}/show/${type}/${id}`;
+  const description =
+    show.overview ||
+    `Find where to watch ${title}. Discover streaming platforms, rental options, and purchase locations.`;
 
   // Format date to match actor page format (month date, year)
   const formatDate = (dateString: string) => {
@@ -143,9 +153,40 @@ export default async function ShowDetailPage({ params }: ShowDetailPageProps) {
     mediaType === 'tv' && show.last_air_date
       ? formatDate(show.last_air_date)
       : null;
+  const rating = getShowRating(show);
+  const ratingCount =
+    typeof show.vote_count === 'number' && show.vote_count > 0
+      ? show.vote_count
+      : null;
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': mediaType === 'tv' ? 'TVSeries' : 'Movie',
+    name: title,
+    description,
+    image: posterUrl,
+    url: canonicalUrl,
+    datePublished: mediaType === 'tv' ? show.first_air_date : show.release_date,
+    genre: show.genres?.map((genre) => genre.name),
+    ...(rating > 0 && rating < 10 && ratingCount
+      ? {
+          aggregateRating: {
+            '@type': 'AggregateRating',
+            ratingValue: rating,
+            ratingCount,
+            bestRating: 10,
+            worstRating: 1,
+          },
+        }
+      : {}),
+    potentialAction: {
+      '@type': 'WatchAction',
+      target: canonicalUrl,
+    },
+  };
 
   return (
     <div className='min-h-screen bg-gradient-to-b from-[#0f0f0f] via-[#1a1a1a] to-[#0a0a0a]'>
+      <JsonLd data={jsonLd} />
       {/* Backdrop */}
       {show.backdrop_path && (
         <div className='relative h-[60vh] w-full overflow-hidden'>
@@ -205,26 +246,19 @@ export default async function ShowDetailPage({ params }: ShowDetailPageProps) {
                   formattedDate
                 )}
               </span>
-              {(() => {
-                // getShowRating prefers IMDB rating, falls back to TMDB vote_average
-                const rating = getShowRating(show);
-                return (
-                  rating > 0 &&
-                  rating < 10 && (
-                    <>
-                      <span>•</span>
-                      <div className='flex items-center gap-1'>
-                        <span className='text-[#FFD700]'>⭐</span>
-                        <span>{rating.toFixed(1)}</span>
-                        {/* Show IMDB icon when rating is from IMDB */}
-                        {show.imdb_rating !== undefined && (
-                          <IMDBIcon className='w-5 h-5' />
-                        )}
-                      </div>
-                    </>
-                  )
-                );
-              })()}
+              {rating > 0 && rating < 10 && (
+                <>
+                  <span>•</span>
+                  <div className='flex items-center gap-1'>
+                    <span className='text-[#FFD700]'>⭐</span>
+                    <span>{rating.toFixed(1)}</span>
+                    {/* Show IMDB icon when rating is from IMDB */}
+                    {show.imdb_rating !== undefined && (
+                      <IMDBIcon className='w-5 h-5' />
+                    )}
+                  </div>
+                </>
+              )}
               {show.popularity !== undefined && (
                 <>
                   <span>•</span>
@@ -258,6 +292,9 @@ export default async function ShowDetailPage({ params }: ShowDetailPageProps) {
 
             {/* Watch Providers */}
             <div className='mt-8'>
+              <h2 className='text-2xl font-semibold mb-3 text-[#FFD700]'>
+                Where to watch {title}
+              </h2>
               <WatchProviders showId={showId} mediaType={mediaType} />
             </div>
           </div>

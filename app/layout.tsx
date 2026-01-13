@@ -1,5 +1,6 @@
 import Navbar from '@/components/Navbar';
 import '@/lib/fontawesome';
+import { getSiteUrl } from '@/lib/site';
 import { Analytics } from '@vercel/analytics/next';
 import type { Metadata, Viewport } from 'next';
 import { Inter, Playfair_Display } from 'next/font/google';
@@ -17,23 +18,6 @@ const inter = Inter({
   variable: '--font-inter',
   display: 'swap',
 });
-
-// Ensure we always have a valid URL string
-function getSiteUrl(): URL {
-  const defaultUrl = 'https://findmyflick.space';
-  const envUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-
-  if (envUrl && envUrl.length > 0) {
-    try {
-      return new URL(envUrl);
-    } catch {
-      // If env URL is invalid, fall back to default
-      return new URL(defaultUrl);
-    }
-  }
-
-  return new URL(defaultUrl);
-}
 
 export const metadata: Metadata = {
   metadataBase: getSiteUrl(),
@@ -123,6 +107,32 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const siteUrl = getSiteUrl().toString();
+  const siteJsonLd = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'Organization',
+        name: 'Find my Flick',
+        url: siteUrl,
+        logo: `${siteUrl}/icon.svg`,
+      },
+      {
+        '@type': 'WebSite',
+        name: 'Find my Flick',
+        url: siteUrl,
+        description:
+          'Discover where to watch your favorite movies and TV shows. Search through thousands of titles and find the best streaming platforms.',
+        inLanguage: 'en',
+        potentialAction: {
+          '@type': 'SearchAction',
+          target: `${siteUrl}/search?q={search_term_string}`,
+          'query-input': 'required name=search_term_string',
+        },
+      },
+    ],
+  };
+
   return (
     <html lang='en'>
       <body
@@ -130,6 +140,10 @@ export default function RootLayout({
       >
         <Navbar />
         {children}
+        <script
+          type='application/ld+json'
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd) }}
+        />
         <Analytics
           beforeSend={(event) => {
             const skip = localStorage.getItem('skipAnalytics') === '1';
