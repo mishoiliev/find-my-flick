@@ -1,11 +1,13 @@
 'use client';
 
 import { Genre, MOVIE_GENRES, TV_GENRES } from '@/lib/tmdb';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import GenreFilter from './GenreFilter';
+import { useCallback } from 'react';
 
 export default function BrowseByGenre() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   // Combine all genres from movies and TV shows
   // For genres that exist in both, use the movie name (or prefer one)
@@ -30,19 +32,48 @@ export default function BrowseByGenre() {
     a.name.localeCompare(b.name)
   );
 
-  const handleGenreClick = (genreId: number) => {
-    // Navigate to search page with genre filter (type='all' by default)
-    router.push(`/search?genres=${genreId}`);
-  };
+  // Get selected genres from URL
+  const selectedGenresParam = searchParams.get('genres');
+  const selectedGenres = selectedGenresParam
+    ? selectedGenresParam.split(',').map((id) => parseInt(id.trim())).filter((id) => !isNaN(id))
+    : [];
+
+  const handleGenreToggle = useCallback((genreId: number) => {
+    const currentGenres = selectedGenres;
+    const newGenres = currentGenres.includes(genreId)
+      ? currentGenres.filter((id) => id !== genreId)
+      : [...currentGenres, genreId];
+
+    // Update URL with new genres
+    const params = new URLSearchParams(searchParams.toString());
+    if (newGenres.length > 0) {
+      params.set('genres', newGenres.join(','));
+    } else {
+      params.delete('genres');
+    }
+    
+    // Update URL - navigate to root if no params, otherwise include params
+    const newUrl = params.toString() ? `/?${params.toString()}` : '/';
+    router.push(newUrl, { scroll: false });
+  }, [selectedGenres, searchParams, router]);
+
+  const handleClearAll = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('genres');
+    
+    // Navigate to root if no params left, otherwise keep other params
+    const newUrl = params.toString() ? `/?${params.toString()}` : '/';
+    router.push(newUrl, { scroll: false });
+  }, [searchParams, router]);
 
   return (
     <div className='mb-12'>
       <GenreFilter
         genres={availableGenres}
-        selectedGenres={[]}
-        onGenreToggle={handleGenreClick}
-        onClearAll={() => {}}
-        clickable={true}
+        selectedGenres={selectedGenres}
+        onGenreToggle={handleGenreToggle}
+        onClearAll={handleClearAll}
+        clickable={false}
       />
     </div>
   );

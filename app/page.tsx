@@ -1,15 +1,27 @@
 import BrowseByGenre from '@/components/BrowseByGenre';
+import HomeContent from '@/components/HomeContent';
 import PageHeader from '@/components/PageHeader';
 import SearchBar from '@/components/SearchBar';
-import ShowGrid from '@/components/ShowGrid';
 import { fetchPopularMovies, fetchPopularTVShows } from '@/lib/tmdb';
 import { Suspense } from 'react';
 
-export default async function Home() {
+interface HomeProps {
+  searchParams: { genres?: string };
+}
+
+export default async function Home({ searchParams }: HomeProps) {
   const [popularMovies, popularTVShows] = await Promise.all([
     fetchPopularMovies(),
     fetchPopularTVShows(),
   ]);
+
+  // Parse selected genres from URL
+  const selectedGenreIds = searchParams.genres
+    ? searchParams.genres
+        .split(',')
+        .map((id) => parseInt(id.trim()))
+        .filter((id) => !isNaN(id))
+    : [];
 
   return (
     <main className='min-h-screen bg-gradient-to-b from-[#0f0f0f] via-[#1a1a1a] to-[#0a0a0a]'>
@@ -34,21 +46,11 @@ export default async function Home() {
           <BrowseByGenre />
         </Suspense>
 
-        <div className='mt-12 space-y-12'>
-          <div>
-            <h2 className='text-3xl font-semibold text-[#FFD700] mb-6'>
-              Popular Movies
-            </h2>
-            <ShowGrid shows={popularMovies} />
-          </div>
-
-          <div>
-            <h2 className='text-3xl font-semibold text-[#FFD700] mb-6'>
-              Popular TV Shows
-            </h2>
-            <ShowGrid shows={popularTVShows} />
-          </div>
-        </div>
+        <HomeContent
+          popularMovies={popularMovies}
+          popularTVShows={popularTVShows}
+          selectedGenreIds={selectedGenreIds}
+        />
       </div>
     </main>
   );
