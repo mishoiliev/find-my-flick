@@ -1,25 +1,52 @@
-import type { Metadata } from 'next';
-import Pagination from '@/components/Pagination';
 import PageHeader from '@/components/PageHeader';
+import Pagination from '@/components/Pagination';
 import SearchBar from '@/components/SearchBar';
-import ShowGrid from '@/components/ShowGrid';
 import SearchContent from '@/components/SearchContent';
-import { searchShows, discoverShowsByGenre, fetchPopularShows, Show, MOVIE_GENRES, TV_GENRES, Genre } from '@/lib/tmdb';
+import ShowGrid from '@/components/ShowGrid';
+import {
+  discoverShowsByGenre,
+  fetchPopularShows,
+  Genre,
+  MOVIE_GENRES,
+  searchShows,
+  Show,
+  TV_GENRES,
+} from '@/lib/tmdb';
+import type { Metadata } from 'next';
 
 interface SearchPageProps {
-  searchParams: { q?: string; page?: string; genres?: string; type?: string };
+  searchParams: Promise<{
+    q?: string;
+    page?: string;
+    genres?: string;
+    type?: string;
+  }>;
 }
 
-export async function generateMetadata({ searchParams }: SearchPageProps): Promise<Metadata> {
-  const query = searchParams.q || '';
-  const genres = searchParams.genres;
-  
+export async function generateMetadata({
+  searchParams,
+}: SearchPageProps): Promise<Metadata> {
+  const resolvedSearchParams = await searchParams;
+  const query = resolvedSearchParams.q || '';
+  const genres = resolvedSearchParams.genres;
+
   if (genres) {
-    const genreIds = genres.split(',').map(id => parseInt(id.trim())).filter(Boolean);
-    const type = searchParams.type || 'all';
-    const genreMap = type === 'movie' ? MOVIE_GENRES : type === 'tv' ? TV_GENRES : { ...MOVIE_GENRES, ...TV_GENRES };
-    const genreNames = genreIds.map(id => genreMap[id]).filter(Boolean).join(', ');
-    
+    const genreIds = genres
+      .split(',')
+      .map((id) => parseInt(id.trim()))
+      .filter(Boolean);
+    const type = resolvedSearchParams.type || 'all';
+    const genreMap =
+      type === 'movie'
+        ? MOVIE_GENRES
+        : type === 'tv'
+        ? TV_GENRES
+        : { ...MOVIE_GENRES, ...TV_GENRES };
+    const genreNames = genreIds
+      .map((id) => genreMap[id])
+      .filter(Boolean)
+      .join(', ');
+
     return {
       title: `Browse ${genreNames} - Find my Flick`,
       description: `Browse top ${genreNames} movies and TV shows. Find where to watch them online.`,
@@ -29,7 +56,7 @@ export async function generateMetadata({ searchParams }: SearchPageProps): Promi
       },
     };
   }
-  
+
   if (query.trim()) {
     return {
       title: `Search Results for "${query}"`,
@@ -43,15 +70,17 @@ export async function generateMetadata({ searchParams }: SearchPageProps): Promi
 
   return {
     title: 'Search Movies and TV Shows',
-    description: 'Search for movies and TV shows to find where to watch them online.',
+    description:
+      'Search for movies and TV shows to find where to watch them online.',
   };
 }
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
-  const query = searchParams.q || '';
-  const genres = searchParams.genres;
-  const type = (searchParams.type || 'all') as 'all' | 'movie' | 'tv';
-  const currentPage = parseInt(searchParams.page || '1', 10);
+  const resolvedSearchParams = await searchParams;
+  const query = resolvedSearchParams.q || '';
+  const genres = resolvedSearchParams.genres;
+  const type = (resolvedSearchParams.type || 'all') as 'all' | 'movie' | 'tv';
+  const currentPage = parseInt(resolvedSearchParams.page || '1', 10);
 
   let allResults: Show[] = [];
   let totalPages = 0;
@@ -158,7 +187,10 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
               </div>
               {allResults.length > 0 ? (
                 <>
-                  <ShowGrid shows={allResults.slice(0, 36)} gridLayout="search" />
+                  <ShowGrid
+                    shows={allResults.slice(0, 36)}
+                    gridLayout='search'
+                  />
                   <Pagination
                     currentPage={currentPage}
                     totalPages={totalPages}
@@ -188,4 +220,3 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     </main>
   );
 }
-

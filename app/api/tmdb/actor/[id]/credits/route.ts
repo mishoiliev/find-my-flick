@@ -1,18 +1,26 @@
-import { NextRequest, NextResponse } from 'next/server';
 import {
   getCachedImdbIds,
   getCachedImdbRatings,
   setCachedImdbIds,
 } from '@/lib/imdb-cache';
+import { NextRequest, NextResponse } from 'next/server';
 
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
+// Force dynamic rendering
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  {
+    params,
+  }: {
+    params: Promise<{ id: string }>;
+  }
 ) {
-  const { id } = params;
+  const { id } = await params;
   const searchParams = request.nextUrl.searchParams;
   const enriched = searchParams.get('enriched') === 'true';
 
@@ -101,7 +109,10 @@ export async function GET(
           typeGroups.get(mediaType)!.push(show.id);
         });
 
-        const cachedMappingsByType = new Map<'movie' | 'tv', Map<number, string>>();
+        const cachedMappingsByType = new Map<
+          'movie' | 'tv',
+          Map<number, string>
+        >();
         await Promise.all(
           Array.from(typeGroups.entries()).map(async ([mediaType, ids]) => {
             const mappings = await getCachedImdbIds(mediaType, ids);
@@ -109,7 +120,10 @@ export async function GET(
           })
         );
 
-        const newMappingsByType = new Map<'movie' | 'tv', Map<number, string>>();
+        const newMappingsByType = new Map<
+          'movie' | 'tv',
+          Map<number, string>
+        >();
 
         const resolved = await Promise.all(
           batch.map(async (show) => {

@@ -84,12 +84,27 @@ export async function getCachedImdbRating(
     return cachedInMemory.rating ?? null;
   }
 
-  const client = getImdbKvClient();
-  const value = await client.get<ImdbRatingCacheValue>(`imdb:rating:${imdbId}`);
-  if (value) {
-    setMemoryCache(memoryKey, value);
+  try {
+    const client = getImdbKvClient();
+    const value = await client.get<ImdbRatingCacheValue>(
+      `imdb:rating:${imdbId}`
+    );
+    if (value) {
+      setMemoryCache(memoryKey, value);
+    }
+    return value?.rating ?? null;
+  } catch (error: any) {
+    // Handle Upstash rate limit or other errors gracefully
+    if (
+      error?.message?.includes('max requests limit') ||
+      error?.message?.includes('rate limit')
+    ) {
+      console.warn('Upstash rate limit reached, skipping IMDB cache lookup');
+    } else {
+      console.error('Error fetching IMDB rating from cache:', error);
+    }
+    return null;
   }
-  return value?.rating ?? null;
 }
 
 export async function getCachedImdbRatings(
@@ -121,18 +136,33 @@ export async function getCachedImdbRatings(
     return results;
   }
 
-  const client = getImdbKvClient();
-  const keys = missingIds.map((id) => `imdb:rating:${id}`);
-  const values = await client.mget(...keys);
+  try {
+    const client = getImdbKvClient();
+    const keys = missingIds.map((id) => `imdb:rating:${id}`);
+    const values = await client.mget(...keys);
 
-  values.forEach((value, index) => {
-    const imdbId = missingIds[index];
-    const typed = value as ImdbRatingCacheValue | null;
-    if (typed && typeof typed.rating === 'number') {
-      results.set(imdbId, typed.rating);
-      setMemoryCache(cacheKey('imdb:rating', imdbId), typed);
+    values.forEach((value, index) => {
+      const imdbId = missingIds[index];
+      const typed = value as ImdbRatingCacheValue | null;
+      if (typed && typeof typed.rating === 'number') {
+        results.set(imdbId, typed.rating);
+        setMemoryCache(cacheKey('imdb:rating', imdbId), typed);
+      }
+    });
+  } catch (error: any) {
+    // Handle Upstash rate limit or other errors gracefully
+    if (
+      error?.message?.includes('max requests limit') ||
+      error?.message?.includes('rate limit')
+    ) {
+      console.warn(
+        'Upstash rate limit reached, skipping IMDB ratings cache lookup'
+      );
+    } else {
+      console.error('Error fetching IMDB ratings from cache:', error);
     }
-  });
+    // Return whatever we got from memory cache
+  }
 
   return results;
 }
@@ -154,8 +184,23 @@ export async function setCachedImdbRatings(
     setMemoryCache(cacheKey('imdb:rating', imdbId), value);
   });
 
-  // @ts-expect-error - mset accepts variadic args but TypeScript requires tuple type
-  await client.mset(...args);
+  try {
+    // @ts-expect-error - mset accepts variadic args but TypeScript requires tuple type
+    await client.mset(...args);
+  } catch (error: any) {
+    // Handle Upstash rate limit or other errors gracefully
+    if (
+      error?.message?.includes('max requests limit') ||
+      error?.message?.includes('rate limit')
+    ) {
+      console.warn(
+        'Upstash rate limit reached, skipping IMDB ratings cache write'
+      );
+    } else {
+      console.error('Error setting IMDB ratings cache:', error);
+    }
+    // Continue - memory cache is already updated
+  }
 }
 
 export async function setCachedImdbRating(
@@ -167,9 +212,25 @@ export async function setCachedImdbRating(
   }
 
   const value: ImdbRatingCacheValue = { rating, updatedAt: Date.now() };
-  const client = getImdbKvClient();
-  await client.set(`imdb:rating:${imdbId}`, value);
   setMemoryCache(cacheKey('imdb:rating', imdbId), value);
+
+  try {
+    const client = getImdbKvClient();
+    await client.set(`imdb:rating:${imdbId}`, value);
+  } catch (error: any) {
+    // Handle Upstash rate limit or other errors gracefully
+    if (
+      error?.message?.includes('max requests limit') ||
+      error?.message?.includes('rate limit')
+    ) {
+      console.warn(
+        'Upstash rate limit reached, skipping IMDB rating cache write'
+      );
+    } else {
+      console.error('Error setting IMDB rating cache:', error);
+    }
+    // Continue - memory cache is already updated
+  }
 }
 
 export async function getCachedImdbId(
@@ -190,14 +251,27 @@ export async function getCachedImdbId(
     return cachedInMemory.imdbId ?? null;
   }
 
-  const client = getImdbKvClient();
-  const value = await client.get<ImdbIdCacheValue>(
-    `imdb:map:${mediaType}:${tmdbId}`
-  );
-  if (value) {
-    setMemoryCache(memoryKey, value);
+  try {
+    const client = getImdbKvClient();
+    const value = await client.get<ImdbIdCacheValue>(
+      `imdb:map:${mediaType}:${tmdbId}`
+    );
+    if (value) {
+      setMemoryCache(memoryKey, value);
+    }
+    return value?.imdbId ?? null;
+  } catch (error: any) {
+    // Handle Upstash rate limit or other errors gracefully
+    if (
+      error?.message?.includes('max requests limit') ||
+      error?.message?.includes('rate limit')
+    ) {
+      console.warn('Upstash rate limit reached, skipping IMDB ID cache lookup');
+    } else {
+      console.error('Error fetching IMDB ID from cache:', error);
+    }
+    return null;
   }
-  return value?.imdbId ?? null;
 }
 
 export async function getCachedImdbIds(
@@ -232,18 +306,31 @@ export async function getCachedImdbIds(
     return results;
   }
 
-  const client = getImdbKvClient();
-  const keys = missingIds.map((id) => `imdb:map:${mediaType}:${id}`);
-  const values = await client.mget(...keys);
+  try {
+    const client = getImdbKvClient();
+    const keys = missingIds.map((id) => `imdb:map:${mediaType}:${id}`);
+    const values = await client.mget(...keys);
 
-  values.forEach((value, index) => {
-    const tmdbId = missingIds[index];
-    const typed = value as ImdbIdCacheValue | null;
-    if (typed?.imdbId) {
-      results.set(tmdbId, typed.imdbId);
-      setMemoryCache(cacheKey(`imdb:map:${mediaType}`, tmdbId), typed);
+    values.forEach((value, index) => {
+      const tmdbId = missingIds[index];
+      const typed = value as ImdbIdCacheValue | null;
+      if (typed?.imdbId) {
+        results.set(tmdbId, typed.imdbId);
+        setMemoryCache(cacheKey(`imdb:map:${mediaType}`, tmdbId), typed);
+      }
+    });
+  } catch (error: any) {
+    // Handle Upstash rate limit or other errors gracefully
+    if (
+      error?.message?.includes('max requests limit') ||
+      error?.message?.includes('rate limit')
+    ) {
+      console.warn('Upstash rate limit reached, skipping IMDB ID cache lookup');
+    } else {
+      console.error('Error fetching IMDB IDs from cache:', error);
     }
-  });
+    // Return whatever we got from memory cache
+  }
 
   return results;
 }
@@ -258,9 +345,23 @@ export async function setCachedImdbId(
   }
 
   const value: ImdbIdCacheValue = { imdbId, updatedAt: Date.now() };
-  const client = getImdbKvClient();
-  await client.set(`imdb:map:${mediaType}:${tmdbId}`, value);
   setMemoryCache(cacheKey(`imdb:map:${mediaType}`, tmdbId), value);
+
+  try {
+    const client = getImdbKvClient();
+    await client.set(`imdb:map:${mediaType}:${tmdbId}`, value);
+  } catch (error: any) {
+    // Handle Upstash rate limit or other errors gracefully
+    if (
+      error?.message?.includes('max requests limit') ||
+      error?.message?.includes('rate limit')
+    ) {
+      console.warn('Upstash rate limit reached, skipping IMDB ID cache write');
+    } else {
+      console.error('Error setting IMDB ID cache:', error);
+    }
+    // Continue - memory cache is already updated
+  }
 }
 
 export async function setCachedImdbIds(
@@ -281,8 +382,21 @@ export async function setCachedImdbIds(
     setMemoryCache(cacheKey(`imdb:map:${mediaType}`, tmdbId), value);
   });
 
-  // @ts-expect-error - mset accepts variadic args but TypeScript requires tuple type
-  await client.mset(...args);
+  try {
+    // @ts-expect-error - mset accepts variadic args but TypeScript requires tuple type
+    await client.mset(...args);
+  } catch (error: any) {
+    // Handle Upstash rate limit or other errors gracefully
+    if (
+      error?.message?.includes('max requests limit') ||
+      error?.message?.includes('rate limit')
+    ) {
+      console.warn('Upstash rate limit reached, skipping IMDB IDs cache write');
+    } else {
+      console.error('Error setting IMDB IDs cache:', error);
+    }
+    // Continue - memory cache is already updated
+  }
 }
 
 export async function getImdbRatingWithCache(

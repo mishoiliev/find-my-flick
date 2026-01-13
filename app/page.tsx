@@ -6,18 +6,19 @@ import { fetchPopularMovies, fetchPopularTVShows } from '@/lib/tmdb';
 import { Suspense } from 'react';
 
 interface HomeProps {
-  searchParams: { genres?: string };
+  searchParams: Promise<{ genres?: string }>;
 }
 
 export default async function Home({ searchParams }: HomeProps) {
+  const resolvedSearchParams = await searchParams;
   const [popularMovies, popularTVShows] = await Promise.all([
     fetchPopularMovies(),
     fetchPopularTVShows(),
   ]);
 
   // Parse selected genres from URL
-  const selectedGenreIds = searchParams.genres
-    ? searchParams.genres
+  const selectedGenreIds = resolvedSearchParams.genres
+    ? resolvedSearchParams.genres
         .split(',')
         .map((id) => parseInt(id.trim()))
         .filter((id) => !isNaN(id))

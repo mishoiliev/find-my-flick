@@ -1,13 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Force dynamic rendering
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { type: string; id: string } }
+  {
+    params,
+  }: {
+    params: Promise<{ type: string; id: string }>;
+  }
 ) {
-  const { type, id } = params;
+  const { type, id } = await params;
 
   if (type !== 'movie' && type !== 'tv') {
     return NextResponse.json(

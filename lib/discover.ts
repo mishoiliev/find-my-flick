@@ -13,73 +13,85 @@ async function enrichShowsWithIMDBRatings(
   shows: any[],
   mediaType: 'movie' | 'tv'
 ): Promise<any[]> {
-  const showsToEnrich = shows.slice(0, 20);
-  const remainingShows = shows.slice(20);
-
-  const batchSize = 5;
-  const enrichedShows: any[] = [];
-
-  for (let i = 0; i < showsToEnrich.length; i += batchSize) {
-    const batch = showsToEnrich.slice(i, i + batchSize);
-    const tmdbIds = batch.map((show) => show.id);
-    const cachedMappings = await getCachedImdbIds(mediaType, tmdbIds);
-    const newMappings = new Map<number, string>();
-
-    const resolved = await Promise.all(
-      batch.map(async (show) => {
-        if (show.imdb_rating !== undefined) {
-          return { show, imdbId: show.imdb_id || null };
-        }
-
-        let imdbId = cachedMappings.get(show.id) || null;
-
-        if (!imdbId) {
-          const externalIdsResponse = await fetch(
-            `${TMDB_BASE_URL}/${mediaType}/${show.id}/external_ids?api_key=${TMDB_API_KEY}`,
-            {
-              next: { revalidate: 3600 },
-            }
-          );
-
-          if (externalIdsResponse.ok) {
-            const externalIds = await externalIdsResponse.json();
-            imdbId = externalIds.imdb_id || null;
-            if (imdbId) {
-              newMappings.set(show.id, imdbId);
-            }
-          }
-        }
-
-        return { show, imdbId };
-      })
-    );
-
-    if (newMappings.size > 0) {
-      await setCachedImdbIds(mediaType, newMappings);
-    }
-
-    const imdbIds = resolved
-      .filter((item) => item.imdbId && item.show.imdb_rating === undefined)
-      .map((item) => item.imdbId as string);
-    const ratings = imdbIds.length
-      ? await getCachedImdbRatings(imdbIds)
-      : new Map<string, number>();
-
-    resolved.forEach(({ show, imdbId }) => {
-      if (imdbId) {
-        show.imdb_id = imdbId;
-        if (show.imdb_rating === undefined) {
-          const rating = ratings.get(imdbId);
-          if (rating !== undefined) {
-            show.imdb_rating = rating;
-          }
-        }
-      }
-      enrichedShows.push(show);
-    });
+  // If no shows, return empty array
+  if (!shows || shows.length === 0) {
+    return [];
   }
 
-  return [...enrichedShows, ...remainingShows];
+  // If enrichment fails, return original shows
+  try {
+    const showsToEnrich = shows.slice(0, 20);
+    const remainingShows = shows.slice(20);
+
+    const batchSize = 5;
+    const enrichedShows: any[] = [];
+
+    for (let i = 0; i < showsToEnrich.length; i += batchSize) {
+      const batch = showsToEnrich.slice(i, i + batchSize);
+      const tmdbIds = batch.map((show) => show.id);
+      const cachedMappings = await getCachedImdbIds(mediaType, tmdbIds);
+      const newMappings = new Map<number, string>();
+
+      const resolved = await Promise.all(
+        batch.map(async (show) => {
+          if (show.imdb_rating !== undefined) {
+            return { show, imdbId: show.imdb_id || null };
+          }
+
+          let imdbId = cachedMappings.get(show.id) || null;
+
+          if (!imdbId) {
+            const externalIdsResponse = await fetch(
+              `${TMDB_BASE_URL}/${mediaType}/${show.id}/external_ids?api_key=${TMDB_API_KEY}`,
+              {
+                next: { revalidate: 3600 },
+              }
+            );
+
+            if (externalIdsResponse.ok) {
+              const externalIds = await externalIdsResponse.json();
+              imdbId = externalIds.imdb_id || null;
+              if (imdbId) {
+                newMappings.set(show.id, imdbId);
+              }
+            }
+          }
+
+          return { show, imdbId };
+        })
+      );
+
+      if (newMappings.size > 0) {
+        await setCachedImdbIds(mediaType, newMappings);
+      }
+
+      const imdbIds = resolved
+        .filter((item) => item.imdbId && item.show.imdb_rating === undefined)
+        .map((item) => item.imdbId as string);
+      const ratings = imdbIds.length
+        ? await getCachedImdbRatings(imdbIds)
+        : new Map<string, number>();
+
+      resolved.forEach(({ show, imdbId }) => {
+        if (imdbId) {
+          show.imdb_id = imdbId;
+          if (show.imdb_rating === undefined) {
+            const rating = ratings.get(imdbId);
+            if (rating !== undefined) {
+              show.imdb_rating = rating;
+            }
+          }
+        }
+        enrichedShows.push(show);
+      });
+    }
+
+    return [...enrichedShows, ...remainingShows];
+  } catch (error) {
+    // If enrichment fails, return original shows
+    console.error('Error enriching shows with IMDB ratings:', error);
+    return shows;
+  }
 }
 
 export async function discoverShowsByGenreLogic(
@@ -87,7 +99,12 @@ export async function discoverShowsByGenreLogic(
   type: 'all' | 'movie' | 'tv' = 'all',
   page: string = '1',
   maxResults: number = 50
-): Promise<{ results: any[]; page: number; total_pages: number; total_results: number }> {
+): Promise<{
+  results: any[];
+  page: number;
+  total_pages: number;
+  total_results: number;
+}> {
   let allResults: any[] = [];
 
   // Combine all genre IDs into a comma-separated string for AND logic
@@ -124,7 +141,9 @@ export async function discoverShowsByGenreLogic(
         name: m.name || m.title,
       }));
     } else {
-      console.error(`Movie API error: ${movieResponse.status} ${movieResponse.statusText}`);
+      console.error(
+        `Movie API error: ${movieResponse.status} ${movieResponse.statusText}`
+      );
     }
 
     if (tvResponse.ok) {
@@ -136,7 +155,9 @@ export async function discoverShowsByGenreLogic(
         name: t.name || t.title,
       }));
     } else {
-      console.error(`TV API error: ${tvResponse.status} ${tvResponse.statusText}`);
+      console.error(
+        `TV API error: ${tvResponse.status} ${tvResponse.statusText}`
+      );
     }
 
     allResults = [...movies, ...tvShows];
@@ -144,19 +165,35 @@ export async function discoverShowsByGenreLogic(
     // Sort by popularity
     allResults.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
 
-    // Enrich top results with IMDB ratings
+    // Enrich top results with IMDB ratings (if enrichment fails, continue with unenriched results)
     const top20Results = allResults.slice(0, 20);
-    const top20Movies = top20Results.filter((s: any) => s.media_type === 'movie');
+    const top20Movies = top20Results.filter(
+      (s: any) => s.media_type === 'movie'
+    );
     const top20TVShows = top20Results.filter((s: any) => s.media_type === 'tv');
 
-    const enrichedMovies = await enrichShowsWithIMDBRatings(
-      top20Movies.slice(0, 10),
-      'movie'
-    );
-    const enrichedTVShows = await enrichShowsWithIMDBRatings(
-      top20TVShows.slice(0, 10),
-      'tv'
-    );
+    let enrichedMovies: any[] = [];
+    let enrichedTVShows: any[] = [];
+
+    try {
+      enrichedMovies = await enrichShowsWithIMDBRatings(
+        top20Movies.slice(0, 10),
+        'movie'
+      );
+    } catch (error) {
+      console.error('Error enriching movies with IMDB ratings:', error);
+      enrichedMovies = top20Movies.slice(0, 10);
+    }
+
+    try {
+      enrichedTVShows = await enrichShowsWithIMDBRatings(
+        top20TVShows.slice(0, 10),
+        'tv'
+      );
+    } catch (error) {
+      console.error('Error enriching TV shows with IMDB ratings:', error);
+      enrichedTVShows = top20TVShows.slice(0, 10);
+    }
 
     // Reconstruct results
     const enrichedMap = new Map();
@@ -190,13 +227,21 @@ export async function discoverShowsByGenreLogic(
       // Sort by popularity
       allResults.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
 
-      // Enrich with IMDB ratings
-      allResults = await enrichShowsWithIMDBRatings(
-        allResults.slice(0, 20),
-        'movie'
-      );
+      // Enrich with IMDB ratings (if enrichment fails, continue with unenriched results)
+      try {
+        const enriched = await enrichShowsWithIMDBRatings(
+          allResults.slice(0, 20),
+          'movie'
+        );
+        allResults = [...enriched, ...allResults.slice(20)];
+      } catch (error) {
+        console.error('Error enriching movies with IMDB ratings:', error);
+        // Continue with unenriched results
+      }
     } else {
-      console.error(`Movie API error: ${response.status} ${response.statusText}`);
+      console.error(
+        `Movie API error: ${response.status} ${response.statusText}`
+      );
     }
   } else if (type === 'tv') {
     // Fetch TV shows with all genres combined (AND logic)
@@ -219,18 +264,24 @@ export async function discoverShowsByGenreLogic(
       // Sort by popularity
       allResults.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
 
-      // Enrich with IMDB ratings
-      allResults = await enrichShowsWithIMDBRatings(
-        allResults.slice(0, 20),
-        'tv'
-      );
+      // Enrich with IMDB ratings (if enrichment fails, continue with unenriched results)
+      try {
+        const enriched = await enrichShowsWithIMDBRatings(
+          allResults.slice(0, 20),
+          'tv'
+        );
+        allResults = [...enriched, ...allResults.slice(20)];
+      } catch (error) {
+        console.error('Error enriching TV shows with IMDB ratings:', error);
+        // Continue with unenriched results
+      }
     } else {
       console.error(`TV API error: ${response.status} ${response.statusText}`);
     }
   }
 
-  // Limit to maxResults
-  const finalResults = allResults.slice(0, maxResults);
+  // Limit to maxResults and ensure we always return an array
+  const finalResults = (allResults || []).slice(0, maxResults);
 
   return {
     results: finalResults,

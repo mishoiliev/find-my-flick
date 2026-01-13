@@ -18,16 +18,16 @@ import Image from 'next/image';
 import { notFound } from 'next/navigation';
 
 interface ShowDetailPageProps {
-  params: {
+  params: Promise<{
     type: string;
     id: string;
-  };
+  }>;
 }
 
 export async function generateMetadata({
   params,
 }: ShowDetailPageProps): Promise<Metadata> {
-  const { type, id } = params;
+  const { type, id } = await params;
   const showId = parseInt(id);
   const mediaType = type === 'tv' ? 'tv' : 'movie';
 
@@ -104,7 +104,7 @@ export async function generateMetadata({
 }
 
 export default async function ShowDetailPage({ params }: ShowDetailPageProps) {
-  const { type, id } = params;
+  const { type, id } = await params;
   const showId = parseInt(id);
   const mediaType = type === 'tv' ? 'tv' : 'movie';
 
@@ -158,6 +158,10 @@ export default async function ShowDetailPage({ params }: ShowDetailPageProps) {
     typeof show.vote_count === 'number' && show.vote_count > 0
       ? show.vote_count
       : null;
+  const datePublished =
+    mediaType === 'tv' ? show.first_air_date : show.release_date;
+  const genres = show.genres?.map((genre) => genre.name).filter(Boolean);
+
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': mediaType === 'tv' ? 'TVSeries' : 'Movie',
@@ -165,8 +169,8 @@ export default async function ShowDetailPage({ params }: ShowDetailPageProps) {
     description,
     image: posterUrl,
     url: canonicalUrl,
-    datePublished: mediaType === 'tv' ? show.first_air_date : show.release_date,
-    genre: show.genres?.map((genre) => genre.name),
+    ...(datePublished ? { datePublished } : {}),
+    ...(genres && genres.length > 0 ? { genre: genres } : {}),
     ...(rating > 0 && rating < 10 && ratingCount
       ? {
           aggregateRating: {

@@ -8,13 +8,14 @@ import AllCreditsSkeleton from './components/AllCreditsSkeleton';
 import MostPopularShowsSkeleton from './components/MostPopularShowsSkeleton';
 
 interface ActorPageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 export default async function ActorPage({ params }: ActorPageProps) {
-  const actorId = parseInt(params.id);
+  const { id } = await params;
+  const actorId = parseInt(id);
 
   if (isNaN(actorId)) {
     notFound();

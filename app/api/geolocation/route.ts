@@ -6,8 +6,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   try {
     // Try to get country from Vercel's geolocation headers first
-    const country =
-      request.geo?.country || request.headers.get('x-vercel-ip-country');
+    const country = request.headers.get('x-vercel-ip-country');
 
     if (country) {
       return NextResponse.json({ country: country.toUpperCase() });
@@ -18,13 +17,7 @@ export async function GET(request: NextRequest) {
     const realIp = request.headers.get('x-real-ip');
     const cfConnectingIp = request.headers.get('cf-connecting-ip'); // Cloudflare
     const ip =
-      forwardedFor?.split(',')[0]?.trim() ||
-      realIp ||
-      cfConnectingIp ||
-      request.ip ||
-      '';
-
-    console.log('Detected IP:', ip);
+      forwardedFor?.split(',')[0]?.trim() || realIp || cfConnectingIp || '';
 
     // If we have a valid IP (not localhost), use IP-based geolocation
     if (ip && ip !== '::1' && ip !== '127.0.0.1' && ip !== '') {
@@ -41,7 +34,6 @@ export async function GET(request: NextRequest) {
         if (response.ok) {
           const data = await response.json();
           if (data.countryCode) {
-            console.log('Country from ip-api.com:', data.countryCode);
             return NextResponse.json({
               country: data.countryCode.toUpperCase(),
             });
@@ -62,7 +54,6 @@ export async function GET(request: NextRequest) {
         if (altResponse.ok) {
           const countryCode = await altResponse.text();
           if (countryCode && countryCode.trim().length === 2) {
-            console.log('Country from ipapi.co:', countryCode.trim());
             return NextResponse.json({
               country: countryCode.trim().toUpperCase(),
             });
@@ -82,7 +73,6 @@ export async function GET(request: NextRequest) {
       if (autoDetectResponse.ok) {
         const data = await autoDetectResponse.json();
         if (data.country_code) {
-          console.log('Country from ipapi.co auto-detect:', data.country_code);
           return NextResponse.json({
             country: data.country_code.toUpperCase(),
           });

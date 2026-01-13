@@ -136,6 +136,13 @@ export function normalizeShow(
   show: Partial<Show> & { genre_ids?: number[] },
   mediaType: 'movie' | 'tv'
 ): Show {
+  // Validate required fields
+  if (!show || typeof show.id !== 'number') {
+    throw new Error(
+      `Invalid show data: missing or invalid id. Show: ${JSON.stringify(show)}`
+    );
+  }
+
   // TMDB returns 'title' for movies and 'name' for TV shows
   // We ensure both fields are populated for consistency
   const title = show.title || show.name || '';
@@ -148,7 +155,7 @@ export function normalizeShow(
   }
 
   return {
-    id: show.id!,
+    id: show.id,
     title,
     name,
     overview: show.overview || '',
@@ -409,6 +416,15 @@ function getBaseUrl(): string {
   // Next.js will automatically resolve them to the correct absolute URL
   // However, for some edge cases, we may need an absolute URL
 
+  // In development, always use localhost (ignore production env vars)
+  if (process.env.NODE_ENV !== 'production') {
+    // Check for PORT environment variable (used when running PORT=3001 bun run dev)
+    // Next.js dev server respects the PORT env var
+    const port = process.env.PORT || '3000';
+    return `http://localhost:${port}`;
+  }
+
+  // In production, use environment variables if available
   // Use NEXT_PUBLIC_SITE_URL if available (set in environment variables)
   if (process.env.NEXT_PUBLIC_SITE_URL) {
     let url = process.env.NEXT_PUBLIC_SITE_URL.trim();
@@ -430,10 +446,8 @@ function getBaseUrl(): string {
     return `https://${vercelUrl}`;
   }
 
-  // Fallback to localhost for development
-  return process.env.NODE_ENV === 'production'
-    ? 'https://findmyflick.space'
-    : 'http://localhost:3000';
+  // Fallback to production URL
+  return 'https://findmyflick.space';
 }
 
 // Fetch popular shows (both movies and TV) with caching
@@ -691,19 +705,54 @@ export const discoverShowsByGenre = cache(
 export const getShowDetails = cache(
   async (id: number, mediaType: 'movie' | 'tv'): Promise<Show | null> => {
     try {
-      const response = await fetch(
-        `${getBaseUrl()}/api/tmdb/show/${mediaType}/${id}`,
-        {
-          next: { revalidate: 3600 },
-        }
-      );
+      const apiUrl = `${getBaseUrl()}/api/tmdb/show/${mediaType}/${id}`;
+      const response = await fetch(apiUrl, {
+        next: { revalidate: 3600 },
+      });
 
       if (!response.ok) {
-        throw new Error('Failed to fetch show details');
+        const errorText = await response.text().catch(() => 'Unknown error');
+        let errorMessage = 'Failed to fetch show details';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          // If parsing fails, use the raw text or default message
+          if (errorText && errorText !== 'Unknown error') {
+            errorMessage = errorText;
+          }
+        }
+        console.error(
+          `Failed to fetch show details: ${response.status} ${response.statusText} - ${errorMessage}`
+        );
+        // Don't throw - return null instead to allow graceful degradation
+        return null;
       }
 
       const data = await response.json();
-      return normalizeShow(data, mediaType);
+
+      // Validate data before normalizing
+      if (!data || !data.id) {
+        console.error('Invalid data received from API:', {
+          id,
+          mediaType,
+          hasData: !!data,
+          dataId: data?.id,
+        });
+        return null;
+      }
+
+      try {
+        return normalizeShow(data, mediaType);
+      } catch (normalizeError) {
+        console.error('Error normalizing show data:', {
+          error: normalizeError,
+          id,
+          mediaType,
+          dataKeys: data ? Object.keys(data) : [],
+        });
+        return null;
+      }
     } catch (error) {
       console.error('Error fetching show details:', error);
       return null;
