@@ -5,6 +5,7 @@ import {
   getImdbRatingWithCache,
   getCronState,
   isImdbCacheEnabled,
+  incrementOmdbUsage,
   setCachedImdbId,
   setCronState,
 } from '@/lib/imdb-cache';
@@ -14,10 +15,10 @@ const OMDB_API_KEY = process.env.OMDB_API_KEY || '';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const OMDB_BASE_URL = 'https://www.omdbapi.com';
 
-const MOVIE_PAGES_PER_DAY = 25; // 25 pages * 20 = 500 movies
-const TV_PAGES_PER_DAY = 25; // 25 pages * 20 = 500 TV shows
 const DAYS_IN_CYCLE = 30;
 const REQUEST_CONCURRENCY = 5;
+const MAX_TMDB_PAGES = 500;
+const TARGET_NEW_RATINGS = 1000;
 
 type PopularTitle = {
   id: number;
@@ -42,45 +43,29 @@ function isAuthorizedCron(request: NextRequest): boolean {
   return process.env.NODE_ENV !== 'production';
 }
 
-async function fetchPopularPages(
+async function fetchPopularPage(
   mediaType: 'movie' | 'tv',
-  pageStart: number,
-  pageEnd: number
+  page: number
 ): Promise<PopularTitle[]> {
-  const pages = Array.from(
-    { length: pageEnd - pageStart + 1 },
-    (_, index) => pageStart + index
+  const response = await fetch(
+    `${TMDB_BASE_URL}/${mediaType}/popular?api_key=${TMDB_API_KEY}&page=${page}`
   );
-  const results: PopularTitle[] = [];
 
-  for (let i = 0; i < pages.length; i += REQUEST_CONCURRENCY) {
-    const chunk = pages.slice(i, i + REQUEST_CONCURRENCY);
-    const responses = await Promise.all(
-      chunk.map((page) =>
-        fetch(`${TMDB_BASE_URL}/${mediaType}/popular?api_key=${TMDB_API_KEY}&page=${page}`)
-      )
-    );
-
-    const data = await Promise.all(
-      responses.map(async (res) => (res.ok ? res.json() : null))
-    );
-
-    data.forEach((payload) => {
-      if (!payload?.results) {
-        return;
-      }
-      payload.results.forEach((item: any) => {
-        results.push({
-          id: item.id,
-          media_type: mediaType,
-          title: item.title,
-          name: item.name,
-        });
-      });
-    });
+  if (!response.ok) {
+    return [];
   }
 
-  return results;
+  const data = await response.json();
+  if (!data?.results) {
+    return [];
+  }
+
+  return data.results.map((item: any) => ({
+    id: item.id,
+    media_type: mediaType,
+    title: item.title,
+    name: item.name,
+  }));
 }
 
 async function fetchOmdbRating(imdbId: string): Promise<number | null> {
@@ -89,6 +74,8 @@ async function fetchOmdbRating(imdbId: string): Promise<number | null> {
   }
 
   try {
+    const dateKey = new Date().toISOString().slice(0, 10);
+    await incrementOmdbUsage(dateKey);
     const response = await fetch(
       `${OMDB_BASE_URL}/?i=${imdbId}&apikey=${OMDB_API_KEY}`,
       {
@@ -168,64 +155,104 @@ export async function GET(request: NextRequest) {
   }
 
   const nextDayIndex = ((state?.dayIndex ?? -1) + 1) % DAYS_IN_CYCLE;
-  const moviePageStart = nextDayIndex * MOVIE_PAGES_PER_DAY + 1;
-  const moviePageEnd = moviePageStart + MOVIE_PAGES_PER_DAY - 1;
-  const tvPageStart = nextDayIndex * TV_PAGES_PER_DAY + 1;
-  const tvPageEnd = tvPageStart + TV_PAGES_PER_DAY - 1;
+  let moviePage = state?.moviePage ?? 1;
+  let tvPage = state?.tvPage ?? 1;
 
-  const [movieResults, tvResults] = await Promise.all([
-    fetchPopularPages('movie', moviePageStart, moviePageEnd),
-    fetchPopularPages('tv', tvPageStart, tvPageEnd),
-  ]);
-
-  const titles = [...movieResults, ...tvResults];
+  if (nextDayIndex === 0) {
+    moviePage = 1;
+    tvPage = 1;
+  }
 
   let processed = 0;
   let cachedRatings = 0;
   let fetchedRatings = 0;
   let missingRatings = 0;
   let missingImdbId = 0;
+  let newRatings = 0;
+  let moviePagesScanned = 0;
+  let tvPagesScanned = 0;
 
-  for (let i = 0; i < titles.length; i += REQUEST_CONCURRENCY) {
-    const chunk = titles.slice(i, i + REQUEST_CONCURRENCY);
-    const results = await Promise.all(
-      chunk.map(async (title) => {
-        const imdbId = await getImdbIdForTitle(title);
-        if (!imdbId) {
-          missingImdbId += 1;
-          return;
-        }
+  while (
+    newRatings < TARGET_NEW_RATINGS &&
+    (moviePage <= MAX_TMDB_PAGES || tvPage <= MAX_TMDB_PAGES)
+  ) {
+    const [movieResults, tvResults] = await Promise.all([
+      moviePage <= MAX_TMDB_PAGES
+        ? fetchPopularPage('movie', moviePage)
+        : Promise.resolve([]),
+      tvPage <= MAX_TMDB_PAGES
+        ? fetchPopularPage('tv', tvPage)
+        : Promise.resolve([]),
+    ]);
 
-        const cached = await getCachedImdbRating(imdbId);
-        if (cached !== null) {
-          cachedRatings += 1;
-          return;
-        }
+    if (movieResults.length > 0) {
+      moviePagesScanned += 1;
+      moviePage += 1;
+    }
+    if (tvResults.length > 0) {
+      tvPagesScanned += 1;
+      tvPage += 1;
+    }
 
-        const rating = await getImdbRatingWithCache(imdbId, fetchOmdbRating);
-        if (rating !== null) {
-          fetchedRatings += 1;
-        } else {
-          missingRatings += 1;
-        }
-      })
-    );
+    const titles = [...movieResults, ...tvResults];
+    if (titles.length === 0) {
+      break;
+    }
 
-    processed += results.length;
+    for (let i = 0; i < titles.length; i += REQUEST_CONCURRENCY) {
+      if (newRatings >= TARGET_NEW_RATINGS) {
+        break;
+      }
+
+      const chunk = titles.slice(i, i + REQUEST_CONCURRENCY);
+      const results = await Promise.all(
+        chunk.map(async (title) => {
+          const imdbId = await getImdbIdForTitle(title);
+          if (!imdbId) {
+            missingImdbId += 1;
+            return;
+          }
+
+          const cached = await getCachedImdbRating(imdbId);
+          if (cached !== null) {
+            cachedRatings += 1;
+            return;
+          }
+
+          const rating = await getImdbRatingWithCache(imdbId, fetchOmdbRating);
+          if (rating !== null) {
+            fetchedRatings += 1;
+            newRatings += 1;
+          } else {
+            missingRatings += 1;
+          }
+        })
+      );
+
+      processed += results.length;
+    }
   }
 
-  await setCronState({ dayIndex: nextDayIndex, lastRunDate: today });
+  await setCronState({
+    dayIndex: nextDayIndex,
+    lastRunDate: today,
+    moviePage,
+    tvPage,
+  });
 
   return NextResponse.json({
     status: 'ok',
     dayIndex: nextDayIndex,
-    moviePages: { start: moviePageStart, end: moviePageEnd },
-    tvPages: { start: tvPageStart, end: tvPageEnd },
-    titlesFetched: titles.length,
+    moviePage,
+    tvPage,
+    moviePagesScanned,
+    tvPagesScanned,
     processed,
     cachedRatings,
     fetchedRatings,
     missingRatings,
     missingImdbId,
+    newRatings,
+    targetNewRatings: TARGET_NEW_RATINGS,
   });
 }

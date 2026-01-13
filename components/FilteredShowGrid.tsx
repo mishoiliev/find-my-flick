@@ -1,10 +1,10 @@
 'use client';
 
-import { Show, Genre } from '@/lib/tmdb';
-import { useMemo } from 'react';
+import { Genre, Show } from '@/lib/tmdb';
 import { useRouter } from 'next/navigation';
-import ShowGrid from './ShowGrid';
+import { useMemo } from 'react';
 import GenreFilter from './GenreFilter';
+import ShowGrid from './ShowGrid';
 
 interface FilteredShowGridProps {
   shows: Show[];
