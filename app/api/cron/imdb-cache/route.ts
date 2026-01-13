@@ -5,6 +5,7 @@ import {
   getCronState,
   isImdbCacheEnabled,
   incrementOmdbUsage,
+  acquireCronLock,
   setCachedImdbIds,
   setCachedImdbRatings,
   setCronState,
@@ -124,6 +125,15 @@ export async function GET(request: NextRequest) {
       status: 'skipped',
       reason: 'Already ran today',
       dayIndex: state.dayIndex,
+    });
+  }
+
+  const lockAcquired = await acquireCronLock(today);
+  if (!lockAcquired) {
+    return NextResponse.json({
+      status: 'skipped',
+      reason: 'Cron lock already held',
+      dayIndex: state?.dayIndex ?? null,
     });
   }
 

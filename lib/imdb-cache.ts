@@ -310,11 +310,22 @@ export async function getCronState(): Promise<{
   if (!isKvEnabled()) {
     return null;
   }
-  if (!isKvEnabled()) {
-    return null;
-  }
   const client = getImdbKvClient();
   return client.get('imdb:cron:state');
+}
+
+export async function acquireCronLock(dateKey: string): Promise<boolean> {
+  if (!isKvEnabled()) {
+    return false;
+  }
+
+  const client = getImdbKvClient();
+  const result = await client.set(`imdb:cron:lock:${dateKey}`, '1', {
+    nx: true,
+    ex: 60 * 60,
+  });
+
+  return result === 'OK';
 }
 
 export async function setCronState(state: {
