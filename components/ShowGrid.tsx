@@ -12,7 +12,8 @@ export default function ShowGrid({
   shows,
   gridLayout = 'default',
 }: ShowGridProps) {
-  if (shows.length === 0) {
+  // Handle undefined/null or empty arrays
+  if (!shows || !Array.isArray(shows) || shows.length === 0) {
     return (
       <div className='text-center py-12'>
         <p className='text-[#FFD700]/70 text-lg'>No shows found</p>
