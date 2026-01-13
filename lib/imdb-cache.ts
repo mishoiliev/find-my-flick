@@ -1,4 +1,4 @@
-import { kv } from '@vercel/kv';
+import { createClient, kv } from '@vercel/kv';
 
 type ImdbRatingCacheValue = {
   rating: number;
@@ -9,6 +9,20 @@ type ImdbIdCacheValue = {
   imdbId: string;
   updatedAt: number;
 };
+
+function getKvClient() {
+  if (
+    process.env.IMDB_RATINGS_KV_REST_API_URL &&
+    process.env.IMDB_RATINGS_KV_REST_API_TOKEN
+  ) {
+    return createClient({
+      url: process.env.IMDB_RATINGS_KV_REST_API_URL,
+      token: process.env.IMDB_RATINGS_KV_REST_API_TOKEN,
+    });
+  }
+
+  return kv;
+}
 
 function isKvEnabled(): boolean {
   return Boolean(
@@ -24,7 +38,8 @@ export async function getCachedImdbRating(
     return null;
   }
 
-  const value = await kv.get<ImdbRatingCacheValue>(`imdb:rating:${imdbId}`);
+  const client = getKvClient();
+  const value = await client.get<ImdbRatingCacheValue>(`imdb:rating:${imdbId}`);
   return value?.rating ?? null;
 }
 
@@ -37,7 +52,8 @@ export async function setCachedImdbRating(
   }
 
   const value: ImdbRatingCacheValue = { rating, updatedAt: Date.now() };
-  await kv.set(`imdb:rating:${imdbId}`, value);
+  const client = getKvClient();
+  await client.set(`imdb:rating:${imdbId}`, value);
 }
 
 export async function getCachedImdbId(
@@ -48,7 +64,8 @@ export async function getCachedImdbId(
     return null;
   }
 
-  const value = await kv.get<ImdbIdCacheValue>(
+  const client = getKvClient();
+  const value = await client.get<ImdbIdCacheValue>(
     `imdb:map:${mediaType}:${tmdbId}`
   );
   return value?.imdbId ?? null;
@@ -64,7 +81,8 @@ export async function setCachedImdbId(
   }
 
   const value: ImdbIdCacheValue = { imdbId, updatedAt: Date.now() };
-  await kv.set(`imdb:map:${mediaType}:${tmdbId}`, value);
+  const client = getKvClient();
+  await client.set(`imdb:map:${mediaType}:${tmdbId}`, value);
 }
 
 export async function getImdbRatingWithCache(
@@ -90,7 +108,8 @@ export async function getCronState(): Promise<{
   if (!isKvEnabled()) {
     return null;
   }
-  return kv.get('imdb:cron:state');
+  const client = getKvClient();
+  return client.get('imdb:cron:state');
 }
 
 export async function setCronState(state: {
@@ -100,7 +119,8 @@ export async function setCronState(state: {
   if (!isKvEnabled()) {
     return;
   }
-  await kv.set('imdb:cron:state', state);
+  const client = getKvClient();
+  await client.set('imdb:cron:state', state);
 }
 
 export function isImdbCacheEnabled(): boolean {
