@@ -1,6 +1,5 @@
 import CastList from '@/components/CastList';
 import HypeMeter from '@/components/HypeMeter';
-import IMDBIcon from '@/components/IMDBIcon';
 import JsonLd from '@/components/JsonLd';
 import WatchProviders from '@/components/WatchProviders';
 import { getSiteUrl } from '@/lib/site';
@@ -256,10 +255,6 @@ export default async function ShowDetailPage({ params }: ShowDetailPageProps) {
                   <div className='flex items-center gap-1'>
                     <span className='text-[#FFD700]'>⭐</span>
                     <span>{rating.toFixed(1)}</span>
-                    {/* Show IMDB icon when rating is from IMDB */}
-                    {show.imdb_rating !== undefined && (
-                      <IMDBIcon className='w-5 h-5' />
-                    )}
                   </div>
                 </>
               )}

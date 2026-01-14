@@ -10,7 +10,7 @@ interface EnrichedShowGridProps {
   gridLayout?: 'default' | 'compact' | 'search';
 }
 
-// Fallback that shows basic shows without IMDB ratings
+// Fallback that shows basic shows
 function BasicShowsFallback({ shows, gridLayout }: EnrichedShowGridProps) {
   return <ShowGrid shows={shows} gridLayout={gridLayout} />;
 }

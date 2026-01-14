@@ -1,4 +1,3 @@
-import { getCachedImdbRating } from '@/lib/imdb-cache';
 import { NextRequest, NextResponse } from 'next/server';
 
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
@@ -88,20 +87,12 @@ export async function GET(
         }
       };
 
-      [showResponse, externalIdsResponse] = await Promise.all([
-        fetchWithTimeout(
-          `${TMDB_BASE_URL}/${type}/${id}?api_key=${TMDB_API_KEY}`,
-          {
-            next: { revalidate: 3600 },
-          }
-        ),
-        fetchWithTimeout(
-          `${TMDB_BASE_URL}/${type}/${id}/external_ids?api_key=${TMDB_API_KEY}`,
-          {
-            next: { revalidate: 3600 },
-          }
-        ),
-      ]);
+      showResponse = await fetchWithTimeout(
+        `${TMDB_BASE_URL}/${type}/${id}?api_key=${TMDB_API_KEY}`,
+        {
+          next: { revalidate: 3600 },
+        }
+      );
     } catch (fetchError) {
       console.error('Error fetching from TMDB API:', fetchError);
       const isTimeout =
@@ -181,91 +172,9 @@ export async function GET(
       name: type === 'tv' ? data.name : data.title,
     };
 
-    try {
-      if (externalIdsResponse.ok) {
-        try {
-          let externalIds: any;
-          try {
-            externalIds = await externalIdsResponse.json();
-          } catch (jsonError) {
-            console.warn(
-              'Error parsing external IDs JSON, continuing without IMDB data:',
-              jsonError
-            );
-          }
-
-          if (externalIds?.imdb_id) {
-            show.imdb_id = externalIds.imdb_id;
-            try {
-              const getRatingSafely = async (
-                imdbId: string
-              ): Promise<number | null> => {
-                try {
-                  const ratingPromise = Promise.resolve(
-                    getCachedImdbRating(imdbId)
-                  );
-
-                  const timeoutPromise = new Promise<null>((resolve) => {
-                    setTimeout(() => {
-                      console.warn(
-                        `IMDB rating lookup timed out for ${imdbId}`
-                      );
-                      resolve(null);
-                    }, 5000);
-                  });
-
-                  const result = await Promise.race([
-                    ratingPromise,
-                    timeoutPromise,
-                  ]);
-                  return result;
-                } catch (err: any) {
-                  if (
-                    err?.message?.includes('max requests limit') ||
-                    err?.message?.includes('rate limit')
-                  ) {
-                    console.warn(
-                      'Upstash rate limit reached, skipping IMDB rating lookup for show'
-                    );
-                  } else {
-                    console.error('Error fetching IMDB rating for show:', err);
-                  }
-                  return null;
-                }
-              };
-
-              const imdbRating = await getRatingSafely(externalIds.imdb_id);
-              if (imdbRating !== null && typeof imdbRating === 'number') {
-                show.imdb_rating = imdbRating;
-              }
-            } catch (ratingError: any) {
-              console.error(
-                'Unexpected error in IMDB rating lookup wrapper:',
-                ratingError
-              );
-            }
-          }
-        } catch (externalIdsError) {
-          console.error('Error processing external IDs:', externalIdsError);
-        }
-      } else {
-        console.warn(
-          `External IDs request failed with status ${externalIdsResponse.status}, continuing without IMDB data`
-        );
-      }
-    } catch (imdbProcessingError) {
-      console.error(
-        'Error during IMDB processing (continuing without IMDB data):',
-        imdbProcessingError
-      );
-    }
-
     const cleanShow: any = {};
     for (const [key, value] of Object.entries(show)) {
       if (typeof value === 'function' || value === undefined) {
-        continue;
-      }
-      if (key === 'imdb_rating' && typeof value !== 'number') {
         continue;
       }
       if (key === 'vote_average' && typeof value !== 'number') {

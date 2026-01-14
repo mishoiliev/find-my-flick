@@ -23,8 +23,6 @@ export interface Show {
   revenue?: number; // Box office revenue for movies
   order?: number; // Role order/importance in cast (lower = more important, used for actor credits)
   episode_count?: number; // Number of episodes actor appeared in (for TV shows)
-  imdb_rating?: number; // IMDB rating (0-10 scale)
-  imdb_id?: string; // IMDB ID (e.g., "tt0111161")
   genres?: Genre[]; // Genres for the show
 }
 
@@ -171,8 +169,6 @@ export function normalizeShow(
     revenue: show.revenue,
     order: show.order,
     episode_count: show.episode_count,
-    imdb_rating: show.imdb_rating,
-    imdb_id: show.imdb_id,
     genres,
   };
 }
@@ -187,9 +183,9 @@ export function getShowDate(show: Show): string {
   return show.release_date || show.first_air_date || 'Unknown';
 }
 
-// Get the rating (prefers IMDB rating, falls back to TMDB vote_average)
+// Get the rating (uses TMDB vote_average)
 export function getShowRating(show: Show): number {
-  return show.imdb_rating ?? show.vote_average;
+  return show.vote_average;
 }
 
 // Get poster image URL
@@ -701,7 +697,7 @@ export const discoverShowsByGenre = cache(
   }
 );
 
-// Get show details with caching and IMDB rating
+// Get show details with caching
 export const getShowDetails = cache(
   async (id: number, mediaType: 'movie' | 'tv'): Promise<Show | null> => {
     try {
@@ -836,7 +832,7 @@ export const getActorDetails = cache(
   }
 );
 
-// Get actor's basic credits (fast, no IMDB ratings)
+// Get actor's basic credits
 export const getActorCreditsBasic = cache(
   async (id: number): Promise<Show[]> => {
     try {
@@ -862,37 +858,7 @@ export const getActorCreditsBasic = cache(
   }
 );
 
-// Enrich actor credits with IMDB ratings (slow operation, use in Suspense)
-export const enrichActorCreditsWithIMDBRatings = cache(
-  async (shows: Show[]): Promise<Show[]> => {
-    try {
-      const response = await fetch(`${getBaseUrl()}/api/tmdb/shows/enrich`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ shows }),
-        next: { revalidate: 3600 },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to enrich shows');
-      }
-
-      const data = await response.json();
-      return data.shows.map((show: any) =>
-        normalizeShow(show, show.media_type || 'movie')
-      );
-    } catch (error) {
-      console.error('Error enriching shows:', error);
-      // Return original shows if enrichment fails
-      return shows;
-    }
-  }
-);
-
 // Get actor's combined credits (movies + TV shows) with caching
-// DEPRECATED: Use getActorCreditsBasic + enrichActorCreditsWithIMDBRatings for better performance
 export const getActorCredits = cache(async (id: number): Promise<Show[]> => {
   try {
     const response = await fetch(

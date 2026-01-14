@@ -9,12 +9,10 @@ import {
 } from '@/lib/tmdb';
 import Image from 'next/image';
 import Link from 'next/link';
-import IMDBIcon from './IMDBIcon';
 
 /**
  * ShowCard - Abstracted component for displaying show/movie cards
  * Used consistently across /search, /actor, and homepage via ShowGrid
- * Always displays IMDB rating when available (via getShowRating)
  */
 interface ShowCardProps {
   show: Show;
@@ -29,7 +27,6 @@ export default function ShowCard({
   const posterUrl = getPosterUrl(show.poster_path);
   const date = getShowDate(show);
   const mediaType = show.media_type || 'movie';
-  // getShowRating prefers IMDB rating, falls back to TMDB vote_average
   const rating = getShowRating(show);
 
   const imageSizes =
@@ -71,7 +68,6 @@ export default function ShowCard({
           </div>
 
           {/* Genres, Year and Rating - at bottom with padding, only visible on hover */}
-          {/* Rating displays IMDB rating when available (via getShowRating) */}
           <div className='absolute bottom-0 left-0 right-0 p-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300'>
             {/* Genres - centered above year/rating */}
             {show.genres && show.genres.length > 0 && (
@@ -93,10 +89,6 @@ export default function ShowCard({
                 <div className='flex items-center gap-1'>
                   <span>⭐</span>
                   <span>{rating.toFixed(1)}</span>
-                  {/* Show IMDB icon when rating is from IMDB */}
-                  {show.imdb_rating !== undefined && (
-                    <IMDBIcon className='w-4 h-4' />
-                  )}
                 </div>
               )}
             </div>

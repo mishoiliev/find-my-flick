@@ -9,7 +9,7 @@ interface ActorCreditsSectionProps {
 export default async function ActorCreditsSection({
   actorId,
 }: ActorCreditsSectionProps) {
-  // Load basic credits immediately (fast, no IMDB ratings)
+  // Load basic credits immediately
   const credits = await getActorCreditsBasic(actorId);
 
   return (
