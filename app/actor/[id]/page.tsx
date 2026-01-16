@@ -7,6 +7,9 @@ import ActorHeader from './components/ActorHeader';
 import AllCreditsSkeleton from './components/AllCreditsSkeleton';
 import MostPopularShowsSkeleton from './components/MostPopularShowsSkeleton';
 
+// Enable static generation with revalidation to reduce function invocations
+export const revalidate = 3600; // Revalidate every hour
+
 interface ActorPageProps {
   params: Promise<{
     id: string;

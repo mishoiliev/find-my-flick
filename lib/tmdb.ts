@@ -786,10 +786,15 @@ export const discoverShowsByGenre = cache(
 export const getShowDetails = cache(
   async (id: number, mediaType: 'movie' | 'tv'): Promise<Show | null> => {
     try {
-      const apiUrl = `${getBaseUrl()}/api/tmdb/show/${mediaType}/${id}`;
-      const response = await fetch(apiUrl, {
-        next: { revalidate: 3600 },
-      });
+      const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
+      const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+
+      const response = await fetch(
+        `${TMDB_BASE_URL}/${mediaType}/${id}?api_key=${TMDB_API_KEY}`,
+        {
+          next: { revalidate: 3600 }, // Cache for 1 hour
+        }
+      );
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unknown error');
@@ -798,7 +803,6 @@ export const getShowDetails = cache(
           const errorData = JSON.parse(errorText);
           errorMessage = errorData.error || errorMessage;
         } catch {
-          // If parsing fails, use the raw text or default message
           if (errorText && errorText !== 'Unknown error') {
             errorMessage = errorText;
           }
@@ -806,15 +810,13 @@ export const getShowDetails = cache(
         console.error(
           `Failed to fetch show details: ${response.status} ${response.statusText} - ${errorMessage}`
         );
-        // Don't throw - return null instead to allow graceful degradation
         return null;
       }
 
       const data = await response.json();
 
-      // Validate data before normalizing
       if (!data || !data.id) {
-        console.error('Invalid data received from API:', {
+        console.error('Invalid data received from TMDB:', {
           id,
           mediaType,
           hasData: !!data,
@@ -842,6 +844,7 @@ export const getShowDetails = cache(
 );
 
 // Get watch providers for a show with caching
+// Calls TMDB directly to avoid function invocations from internal API routes
 export const getWatchProviders = cache(
   async (
     id: number,
@@ -849,10 +852,13 @@ export const getWatchProviders = cache(
     countryCode: string = 'US'
   ): Promise<WatchProviders | null> => {
     try {
+      const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
+      const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+
       const response = await fetch(
-        `${getBaseUrl()}/api/tmdb/show/${mediaType}/${id}/watch-providers?country=${countryCode}`,
+        `${TMDB_BASE_URL}/${mediaType}/${id}/watch/providers?api_key=${TMDB_API_KEY}`,
         {
-          next: { revalidate: 86400 },
+          next: { revalidate: 86400 }, // Cache for 24 hours
         }
       );
 
@@ -861,7 +867,7 @@ export const getWatchProviders = cache(
       }
 
       const data = await response.json();
-      return data;
+      return data.results?.[countryCode] || null;
     } catch (error) {
       console.error('Error fetching watch providers:', error);
       return null;
@@ -870,16 +876,20 @@ export const getWatchProviders = cache(
 );
 
 // Get cast/credits for a show with caching
+// Calls TMDB directly to avoid function invocations from internal API routes
 export const getShowCredits = cache(
   async (
     id: number,
     mediaType: 'movie' | 'tv'
   ): Promise<CastMember[] | null> => {
     try {
+      const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
+      const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+
       const response = await fetch(
-        `${getBaseUrl()}/api/tmdb/show/${mediaType}/${id}/credits`,
+        `${TMDB_BASE_URL}/${mediaType}/${id}/credits?api_key=${TMDB_API_KEY}`,
         {
-          next: { revalidate: 3600 },
+          next: { revalidate: 3600 }, // Cache for 1 hour
         }
       );
 
@@ -888,7 +898,7 @@ export const getShowCredits = cache(
       }
 
       const data = await response.json();
-      return data.cast;
+      return data.cast || [];
     } catch (error) {
       console.error('Error fetching show credits:', error);
       return null;
@@ -897,12 +907,19 @@ export const getShowCredits = cache(
 );
 
 // Get actor details with caching
+// Calls TMDB directly to avoid function invocations from internal API routes
 export const getActorDetails = cache(
   async (id: number): Promise<ActorDetails | null> => {
     try {
-      const response = await fetch(`${getBaseUrl()}/api/tmdb/actor/${id}`, {
-        next: { revalidate: 3600 },
-      });
+      const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
+      const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+
+      const response = await fetch(
+        `${TMDB_BASE_URL}/person/${id}?api_key=${TMDB_API_KEY}`,
+        {
+          next: { revalidate: 3600 }, // Cache for 1 hour
+        }
+      );
 
       if (!response.ok) {
         throw new Error('Failed to fetch actor details');
@@ -918,13 +935,17 @@ export const getActorDetails = cache(
 );
 
 // Get actor's basic credits
+// Calls TMDB directly to avoid function invocations from internal API routes
 export const getActorCreditsBasic = cache(
   async (id: number): Promise<Show[]> => {
     try {
+      const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
+      const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+
       const response = await fetch(
-        `${getBaseUrl()}/api/tmdb/actor/${id}/credits`,
+        `${TMDB_BASE_URL}/person/${id}/combined_credits?api_key=${TMDB_API_KEY}`,
         {
-          next: { revalidate: 3600 },
+          next: { revalidate: 3600 }, // Cache for 1 hour
         }
       );
 
@@ -933,7 +954,14 @@ export const getActorCreditsBasic = cache(
       }
 
       const data = await response.json();
-      return data.credits.map((show: any) =>
+      const allCredits = [
+        ...(data.cast || []).map((show: any) => ({
+          ...show,
+          media_type: show.media_type || (show.title ? 'movie' : 'tv'),
+        })),
+      ];
+
+      return allCredits.map((show: any) =>
         normalizeShow(show, show.media_type || 'movie')
       );
     } catch (error) {
@@ -944,12 +972,16 @@ export const getActorCreditsBasic = cache(
 );
 
 // Get actor's combined credits (movies + TV shows) with caching
+// Calls TMDB directly to avoid function invocations from internal API routes
 export const getActorCredits = cache(async (id: number): Promise<Show[]> => {
   try {
+    const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
+    const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+
     const response = await fetch(
-      `${getBaseUrl()}/api/tmdb/actor/${id}/credits?enriched=true`,
+      `${TMDB_BASE_URL}/person/${id}/combined_credits?api_key=${TMDB_API_KEY}`,
       {
-        next: { revalidate: 3600 },
+        next: { revalidate: 3600 }, // Cache for 1 hour
       }
     );
 
@@ -958,7 +990,14 @@ export const getActorCredits = cache(async (id: number): Promise<Show[]> => {
     }
 
     const data = await response.json();
-    return data.credits.map((show: any) =>
+    const allCredits = [
+      ...(data.cast || []).map((show: any) => ({
+        ...show,
+        media_type: show.media_type || (show.title ? 'movie' : 'tv'),
+      })),
+    ];
+
+    return allCredits.map((show: any) =>
       normalizeShow(show, show.media_type || 'movie')
     );
   } catch (error) {

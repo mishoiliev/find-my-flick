@@ -16,6 +16,9 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
 
+// Enable static generation with revalidation to reduce function invocations
+export const revalidate = 3600; // Revalidate every hour
+
 interface ShowDetailPageProps {
   params: Promise<{
     type: string;
