@@ -9,7 +9,15 @@ export async function GET(request: NextRequest) {
     const country = request.headers.get('x-vercel-ip-country');
 
     if (country) {
-      return NextResponse.json({ country: country.toUpperCase() });
+      return NextResponse.json(
+        { country: country.toUpperCase() },
+        {
+          headers: {
+            'Cache-Control':
+              'public, s-maxage=3600, stale-while-revalidate=86400',
+          },
+        }
+      );
     }
 
     // Fallback: Try to get IP from headers
@@ -34,9 +42,17 @@ export async function GET(request: NextRequest) {
         if (response.ok) {
           const data = await response.json();
           if (data.countryCode) {
-            return NextResponse.json({
-              country: data.countryCode.toUpperCase(),
-            });
+            return NextResponse.json(
+              {
+                country: data.countryCode.toUpperCase(),
+              },
+              {
+                headers: {
+                  'Cache-Control':
+                    'public, s-maxage=3600, stale-while-revalidate=86400',
+                },
+              }
+            );
           }
         }
       } catch (error) {
@@ -54,9 +70,17 @@ export async function GET(request: NextRequest) {
         if (altResponse.ok) {
           const countryCode = await altResponse.text();
           if (countryCode && countryCode.trim().length === 2) {
-            return NextResponse.json({
-              country: countryCode.trim().toUpperCase(),
-            });
+            return NextResponse.json(
+              {
+                country: countryCode.trim().toUpperCase(),
+              },
+              {
+                headers: {
+                  'Cache-Control':
+                    'public, s-maxage=3600, stale-while-revalidate=86400',
+                },
+              }
+            );
           }
         }
       } catch (altError) {
@@ -73,9 +97,17 @@ export async function GET(request: NextRequest) {
       if (autoDetectResponse.ok) {
         const data = await autoDetectResponse.json();
         if (data.country_code) {
-          return NextResponse.json({
-            country: data.country_code.toUpperCase(),
-          });
+          return NextResponse.json(
+            {
+              country: data.country_code.toUpperCase(),
+            },
+            {
+              headers: {
+                'Cache-Control':
+                  'public, s-maxage=3600, stale-while-revalidate=86400',
+              },
+            }
+          );
         }
       }
     } catch (error) {
@@ -83,9 +115,25 @@ export async function GET(request: NextRequest) {
     }
 
     // Final fallback
-    return NextResponse.json({ country: 'US' });
+    return NextResponse.json(
+      { country: 'US' },
+      {
+        headers: {
+          'Cache-Control':
+            'public, s-maxage=3600, stale-while-revalidate=86400',
+        },
+      }
+    );
   } catch (error) {
     console.error('Error in geolocation endpoint:', error);
-    return NextResponse.json({ country: 'US' });
+    return NextResponse.json(
+      { country: 'US' },
+      {
+        headers: {
+          'Cache-Control':
+            'public, s-maxage=3600, stale-while-revalidate=86400',
+        },
+      }
+    );
   }
 }

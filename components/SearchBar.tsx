@@ -288,11 +288,17 @@ export default function SearchBar() {
               {show.poster_path && (
                 <div className='relative w-16 h-24 flex-shrink-0'>
                   <Image
-                    src={`https://image.tmdb.org/t/p/w92${show.poster_path}`}
+                    src={
+                      show.poster_path.startsWith('/')
+                        ? show.poster_path
+                        : `/${show.poster_path}`
+                    }
                     alt={show.title || show.name || 'Show poster'}
                     fill
                     className='object-cover rounded'
                     sizes='64px'
+                    width={92}
+                    height={138}
                   />
                 </div>
               )}

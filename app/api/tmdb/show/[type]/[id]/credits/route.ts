@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Force dynamic rendering
-export const dynamic = 'force-dynamic';
+// Enable caching to reduce edge requests
+export const revalidate = 3600; // Cache for 1 hour
 export const runtime = 'nodejs';
 
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
@@ -40,7 +40,15 @@ export async function GET(
     // Return cast sorted by order (main cast first)
     const cast = (data.cast || []).sort((a: any, b: any) => a.order - b.order);
 
-    return NextResponse.json({ cast });
+    return NextResponse.json(
+      { cast },
+      {
+        headers: {
+          'Cache-Control':
+            'public, s-maxage=3600, stale-while-revalidate=86400',
+        },
+      }
+    );
   } catch (error) {
     console.error('Error fetching show credits:', error);
     return NextResponse.json(

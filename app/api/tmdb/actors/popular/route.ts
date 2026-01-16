@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
+// Enable caching to reduce edge requests
+export const revalidate = 86400; // Cache for 24 hours
+
 export async function GET(request: NextRequest) {
   try {
     // Fetch multiple pages to get 250 actors (20 per page, need 13 pages)
@@ -26,7 +29,15 @@ export async function GET(request: NextRequest) {
       .sort((a: any, b: any) => (b.popularity || 0) - (a.popularity || 0))
       .slice(0, 250);
 
-    return NextResponse.json({ results: sortedActors });
+    return NextResponse.json(
+      { results: sortedActors },
+      {
+        headers: {
+          'Cache-Control':
+            'public, s-maxage=86400, stale-while-revalidate=172800',
+        },
+      }
+    );
   } catch (error) {
     console.error('Error fetching popular actors:', error);
     return NextResponse.json(

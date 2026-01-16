@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
-export const dynamic = 'force-dynamic';
+// Enable caching to reduce edge requests
+export const revalidate = 3600; // Cache for 1 hour
 export const runtime = 'nodejs';
 
 export async function GET(
@@ -205,7 +206,12 @@ export async function GET(
 
     try {
       JSON.stringify(cleanShow);
-      return NextResponse.json(cleanShow);
+      return NextResponse.json(cleanShow, {
+        headers: {
+          'Cache-Control':
+            'public, s-maxage=3600, stale-while-revalidate=86400',
+        },
+      });
     } catch (jsonError) {
       console.error('Error serializing show response to JSON:', {
         error: jsonError,
@@ -227,7 +233,13 @@ export async function GET(
           typeof show.vote_average === 'number' ? show.vote_average : 0,
         genres: Array.isArray(show.genres) ? show.genres : undefined,
       };
-      return NextResponse.json(minimalShow, { status: 200 });
+      return NextResponse.json(minimalShow, {
+        status: 200,
+        headers: {
+          'Cache-Control':
+            'public, s-maxage=3600, stale-while-revalidate=86400',
+        },
+      });
     }
   } catch (error) {
     const errorMessage =

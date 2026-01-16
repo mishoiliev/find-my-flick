@@ -189,20 +189,23 @@ export function getShowRating(show: Show): number {
   return show.vote_average;
 }
 
-// Get poster image URL
+// Get poster image path (custom loader will handle sizing)
+// Returns just the path so the custom loader can choose the optimal TMDB size
 export function getPosterUrl(posterPath: string | null): string {
   if (!posterPath) {
     return '/placeholder-poster.png';
   }
-  return `https://image.tmdb.org/t/p/w500${posterPath}`;
+  // Return just the path - custom loader will add the size prefix
+  return posterPath.startsWith('/') ? posterPath : `/${posterPath}`;
 }
 
-// Get backdrop image URL
+// Get backdrop image path (custom loader will handle sizing)
 export function getBackdropUrl(backdropPath: string | null): string {
   if (!backdropPath) {
     return '/placeholder-backdrop.png';
   }
-  return `https://image.tmdb.org/t/p/w1280${backdropPath}`;
+  // Return just the path - custom loader will add the size prefix
+  return backdropPath.startsWith('/') ? backdropPath : `/${backdropPath}`;
 }
 
 // Sort shows by popularity (prioritizing items with posters)
@@ -375,28 +378,31 @@ export interface ActorCreditsResponse {
   crew: any[];
 }
 
-// Get provider logo URL
+// Get provider logo path (custom loader will handle sizing)
 export function getProviderLogoUrl(logoPath: string | null): string {
   if (!logoPath) {
     return '/placeholder-provider.png';
   }
-  return `https://image.tmdb.org/t/p/w45${logoPath}`;
+  // Return just the path - custom loader will add the size prefix
+  return logoPath.startsWith('/') ? logoPath : `/${logoPath}`;
 }
 
-// Get profile image URL
+// Get profile image path (custom loader will handle sizing)
 export function getProfileUrl(profilePath: string | null): string {
   if (!profilePath) {
     return '/placeholder-profile.png';
   }
-  return `https://image.tmdb.org/t/p/w185${profilePath}`;
+  // Return just the path - custom loader will add the size prefix
+  return profilePath.startsWith('/') ? profilePath : `/${profilePath}`;
 }
 
-// Get larger profile image URL for actor pages
+// Get larger profile image path for actor pages (custom loader will handle sizing)
 export function getProfileUrlLarge(profilePath: string | null): string {
   if (!profilePath) {
     return '/placeholder-profile.png';
   }
-  return `https://image.tmdb.org/t/p/w500${profilePath}`;
+  // Return just the path - custom loader will add the size prefix
+  return profilePath.startsWith('/') ? profilePath : `/${profilePath}`;
 }
 
 // ============================================================================
@@ -652,18 +658,35 @@ export const fetchTrendingTVShows = cache(
 );
 
 // Fetch popular actors (250 most popular)
+// Calls TMDB directly to avoid function invocations from internal API routes
 export const fetchPopularActors = cache(async (): Promise<Actor[]> => {
   try {
-    const response = await fetch(`${getBaseUrl()}/api/tmdb/actors/popular`, {
-      next: { revalidate: 86400 },
-    });
+    const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
+    const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
-    if (!response.ok) {
-      throw new Error('Failed to fetch popular actors');
+    // Fetch multiple pages to get 250 actors (20 per page, need 13 pages)
+    const pages = Array.from({ length: 13 }, (_, i) => i + 1);
+    const responses = await Promise.all(
+      pages.map((page) =>
+        fetch(
+          `${TMDB_BASE_URL}/person/popular?api_key=${TMDB_API_KEY}&page=${page}`,
+          {
+            next: { revalidate: 86400 }, // Cache for 24 hours
+          }
+        )
+      )
+    );
+
+    const allActors: Actor[] = [];
+    for (const res of responses) {
+      if (res.ok) {
+        const data = await res.json();
+        allActors.push(...(data.results || []));
+      }
     }
 
-    const data = await response.json();
-    return data.results;
+    // Return first 250 actors
+    return allActors.slice(0, 250);
   } catch (error) {
     console.error('Error fetching popular actors:', error);
     return [];

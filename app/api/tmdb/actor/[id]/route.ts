@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Force dynamic rendering
-export const dynamic = 'force-dynamic';
+// Enable caching to reduce edge requests
+export const revalidate = 3600; // Cache for 1 hour
 export const runtime = 'nodejs';
 
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
@@ -30,7 +30,11 @@ export async function GET(
     }
 
     const data = await response.json();
-    return NextResponse.json(data);
+    return NextResponse.json(data, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
+      },
+    });
   } catch (error) {
     console.error('Error fetching actor details:', error);
     return NextResponse.json(

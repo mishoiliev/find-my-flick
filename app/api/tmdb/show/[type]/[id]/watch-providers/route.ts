@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Force dynamic rendering
-export const dynamic = 'force-dynamic';
+// Enable caching to reduce edge requests
+export const revalidate = 86400; // Cache for 24 hours (watch providers change less frequently)
 export const runtime = 'nodejs';
 
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
@@ -117,7 +117,12 @@ export async function GET(
     const data = await response.json();
     const providers = data.results[countryCode] || null;
 
-    return NextResponse.json(providers);
+    return NextResponse.json(providers, {
+      headers: {
+        'Cache-Control':
+          'public, s-maxage=86400, stale-while-revalidate=172800',
+      },
+    });
   } catch (error) {
     console.error('Error fetching watch providers:', error);
     return NextResponse.json(

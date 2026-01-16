@@ -3,8 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
-// Force dynamic rendering
-export const dynamic = 'force-dynamic';
+// Enable caching to reduce edge requests
+export const revalidate = 3600; // Cache for 1 hour
 export const runtime = 'nodejs';
 
 export async function GET(
@@ -88,7 +88,15 @@ export async function GET(
         )
     );
 
-    return NextResponse.json({ credits: uniqueShows });
+    return NextResponse.json(
+      { credits: uniqueShows },
+      {
+        headers: {
+          'Cache-Control':
+            'public, s-maxage=3600, stale-while-revalidate=86400',
+        },
+      }
+    );
   } catch (error) {
     console.error('Error fetching actor credits:', error);
     return NextResponse.json(
