@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Show, Genre, MOVIE_GENRES, TV_GENRES } from '@/lib/tmdb';
+import { Genre, MOVIE_GENRES, Show, TV_GENRES } from '@/lib/tmdb';
+import { useEffect, useState } from 'react';
 import ShowGrid from './ShowGrid';
 
 interface HomeContentProps {
@@ -22,7 +22,7 @@ export default function HomeContent({
   // Get available genres for display
   const getAvailableGenres = (): Genre[] => {
     const genreMap = new Map<number, Genre>();
-    
+
     // Add movie genres
     Object.entries(MOVIE_GENRES).forEach(([id, name]) => {
       genreMap.set(parseInt(id), { id: parseInt(id), name });
@@ -51,7 +51,10 @@ export default function HomeContent({
         try {
           const genreIdsParam = selectedGenreIds.join(',');
           const response = await fetch(
-            `/api/tmdb/discover?genres=${genreIdsParam}&type=all&page=1&maxResults=50`
+            `/api/tmdb/discover?genres=${genreIdsParam}&type=all&page=1&maxResults=50`,
+            {
+              cache: 'force-cache', // Use browser cache
+            }
           );
           if (response.ok) {
             const data = await response.json();
@@ -102,11 +105,11 @@ export default function HomeContent({
         </div>
 
         {loading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
+          <div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6'>
             {Array.from({ length: 18 }).map((_, i) => (
               <div
                 key={i}
-                className="aspect-[2/3] bg-[#1a1a1a] rounded-lg animate-pulse"
+                className='aspect-[2/3] bg-[#1a1a1a] rounded-lg animate-pulse'
               />
             ))}
           </div>
@@ -115,7 +118,8 @@ export default function HomeContent({
         ) : (
           <div className='text-center py-12'>
             <p className='text-[#f2f2f1] text-lg'>
-              No results found for the selected genre{selectedGenreIds.length > 1 ? 's' : ''}
+              No results found for the selected genre
+              {selectedGenreIds.length > 1 ? 's' : ''}
             </p>
           </div>
         )}

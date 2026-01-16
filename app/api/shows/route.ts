@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
+// Cache for 1 hour (3600 seconds) to reduce function invocations
+export const revalidate = 3600;
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const type = searchParams.get('type') || 'movie';
@@ -13,7 +16,7 @@ export async function GET(request: NextRequest) {
     const response = await fetch(
       `${TMDB_BASE_URL}/${endpoint}?api_key=${TMDB_API_KEY}&page=${page}`,
       {
-        next: { revalidate: 1800 }, // Cache for 30 minutes
+        next: { revalidate: 3600 }, // Cache for 1 hour
       }
     );
 
@@ -22,7 +25,13 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json();
-    return NextResponse.json(data);
+    
+    // Add cache headers for browser/CDN caching
+    return NextResponse.json(data, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
+      },
+    });
   } catch (error) {
     console.error('Error fetching shows:', error);
     return NextResponse.json(

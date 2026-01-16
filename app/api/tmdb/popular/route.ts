@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
+// Cache for 1 hour to reduce function invocations
+export const revalidate = 3600;
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const type = searchParams.get('type') || 'all'; // 'all', 'movie', 'tv'
@@ -21,13 +24,13 @@ export async function GET(request: NextRequest) {
           fetch(
             `${TMDB_BASE_URL}/movie/popular?api_key=${TMDB_API_KEY}&page=${page}`,
             {
-              next: { revalidate: 1800 },
+              next: { revalidate: 3600 }, // Cache for 1 hour
             }
           ),
           fetch(
             `${TMDB_BASE_URL}/tv/popular?api_key=${TMDB_API_KEY}&page=${page}`,
             {
-              next: { revalidate: 1800 },
+              next: { revalidate: 3600 }, // Cache for 1 hour
             }
           )
         );
@@ -89,7 +92,7 @@ export async function GET(request: NextRequest) {
           fetch(
             `${TMDB_BASE_URL}/movie/popular?api_key=${TMDB_API_KEY}&page=${page}`,
             {
-              next: { revalidate: 1800 },
+              next: { revalidate: 3600 }, // Cache for 1 hour
             }
           )
         );
@@ -122,7 +125,7 @@ export async function GET(request: NextRequest) {
           fetch(
             `${TMDB_BASE_URL}/tv/popular?api_key=${TMDB_API_KEY}&page=${page}`,
             {
-              next: { revalidate: 1800 },
+              next: { revalidate: 3600 }, // Cache for 1 hour
             }
           )
         );
@@ -149,7 +152,15 @@ export async function GET(request: NextRequest) {
     }
 
     // Ensure we always return results array, even if empty
-    return NextResponse.json({ results: results || [] });
+    return NextResponse.json(
+      { results: results || [] },
+      {
+        headers: {
+          'Cache-Control':
+            'public, s-maxage=3600, stale-while-revalidate=86400',
+        },
+      }
+    );
   } catch (error) {
     console.error('Error fetching popular shows:', error);
     return NextResponse.json(

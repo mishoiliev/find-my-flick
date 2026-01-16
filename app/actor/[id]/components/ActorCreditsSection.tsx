@@ -1,6 +1,6 @@
+import { getActorCreditsBasic } from '@/lib/tmdb';
 import EnrichedCreditsFilter from './EnrichedCreditsFilter';
 import MostPopularShows from './MostPopularShows';
-import { getActorCreditsBasic } from '@/lib/tmdb';
 
 interface ActorCreditsSectionProps {
   actorId: number;

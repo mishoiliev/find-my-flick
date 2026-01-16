@@ -1,5 +1,6 @@
-// Types and utility functions only - NO API KEYS OR FETCH CALLS
-// All API calls should go through /app/api/tmdb/* routes
+// Types and utility functions
+// NOTE: Server-side functions call TMDB directly to avoid function invocations.
+// API routes in /app/api/tmdb/* are kept for client-side usage only.
 
 export interface Genre {
   id: number;
@@ -447,33 +448,62 @@ function getBaseUrl(): string {
 }
 
 // Fetch popular shows (both movies and TV) with caching
+// Calls TMDB directly to avoid function invocations from internal API routes
 export const fetchPopularShows = cache(
   async (limit: number = 20): Promise<Show[]> => {
     try {
-      const baseUrl = getBaseUrl();
-      const url = `${baseUrl}/api/tmdb/popular?type=all&limit=${limit}`;
-      const response = await fetch(url, {
-        next: { revalidate: 1800 },
-        // Add headers to ensure proper request handling
-        headers: {
-          'Content-Type': 'application/json',
-        },
+      const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
+      const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+
+      // Fetch both movies and TV shows
+      const [moviesRes, tvRes] = await Promise.all([
+        fetch(`${TMDB_BASE_URL}/movie/popular?api_key=${TMDB_API_KEY}`, {
+          next: { revalidate: 1800 },
+        }),
+        fetch(`${TMDB_BASE_URL}/tv/popular?api_key=${TMDB_API_KEY}`, {
+          next: { revalidate: 1800 },
+        }),
+      ]);
+
+      const allResults: any[] = [];
+
+      if (moviesRes.ok) {
+        const moviesData = await moviesRes.json();
+        const movies = (moviesData.results || []).map((m: any) => ({
+          ...m,
+          media_type: 'movie',
+          title: m.title || m.name,
+          name: m.name || m.title,
+        }));
+        allResults.push(...movies);
+      }
+
+      if (tvRes.ok) {
+        const tvData = await tvRes.json();
+        const tvShows = (tvData.results || []).map((t: any) => ({
+          ...t,
+          media_type: 'tv',
+          title: t.name || t.title,
+          name: t.name || t.title,
+        }));
+        allResults.push(...tvShows);
+      }
+
+      // Remove duplicates, sort by popularity, and limit
+      const seen = new Set<string>();
+      const unique = allResults.filter((show) => {
+        const key = `${show.media_type}-${show.id}`;
+        if (seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
       });
 
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        console.error(
-          `Failed to fetch popular shows: ${response.status} ${errorText}`
-        );
-        return [];
-      }
+      unique.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+      const limited = unique.slice(0, limit);
 
-      const data = await response.json();
-      if (!data.results) {
-        console.error('Invalid response format from API:', data);
-        return [];
-      }
-      return data.results.map((show: any) =>
+      return limited.map((show: any) =>
         normalizeShow(show, show.media_type || 'movie')
       );
     } catch (error) {
@@ -484,16 +514,18 @@ export const fetchPopularShows = cache(
 );
 
 // Fetch popular movies only with caching
+// Calls TMDB directly to avoid function invocations from internal API routes
 export const fetchPopularMovies = cache(async (): Promise<Show[]> => {
   try {
-    const baseUrl = getBaseUrl();
-    const url = `${baseUrl}/api/tmdb/popular?type=movie`;
-    const response = await fetch(url, {
-      next: { revalidate: 1800 },
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
+    const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
+    const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+
+    const response = await fetch(
+      `${TMDB_BASE_URL}/movie/popular?api_key=${TMDB_API_KEY}`,
+      {
+        next: { revalidate: 1800 }, // Cache for 30 minutes
+      }
+    );
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error');
@@ -505,7 +537,7 @@ export const fetchPopularMovies = cache(async (): Promise<Show[]> => {
 
     const data = await response.json();
     if (!data.results) {
-      console.error('Invalid response format from API:', data);
+      console.error('Invalid response format from TMDB:', data);
       return [];
     }
     return data.results.map((show: any) => normalizeShow(show, 'movie'));
@@ -516,10 +548,14 @@ export const fetchPopularMovies = cache(async (): Promise<Show[]> => {
 });
 
 // Fetch top-rated movies
+// Calls TMDB directly to avoid function invocations from internal API routes
 export const fetchTopRatedMovies = cache(async (): Promise<Show[]> => {
   try {
+    const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
+    const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+
     const response = await fetch(
-      `${getBaseUrl()}/api/tmdb/popular?type=movie`,
+      `${TMDB_BASE_URL}/movie/popular?api_key=${TMDB_API_KEY}`,
       {
         next: { revalidate: 1800 },
       }
@@ -538,16 +574,18 @@ export const fetchTopRatedMovies = cache(async (): Promise<Show[]> => {
 });
 
 // Fetch popular TV shows only with caching
+// Calls TMDB directly to avoid function invocations from internal API routes
 export const fetchPopularTVShows = cache(async (): Promise<Show[]> => {
   try {
-    const baseUrl = getBaseUrl();
-    const url = `${baseUrl}/api/tmdb/popular?type=tv`;
-    const response = await fetch(url, {
-      next: { revalidate: 1800 },
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
+    const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
+    const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+
+    const response = await fetch(
+      `${TMDB_BASE_URL}/tv/popular?api_key=${TMDB_API_KEY}`,
+      {
+        next: { revalidate: 1800 }, // Cache for 30 minutes
+      }
+    );
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error');
@@ -559,7 +597,7 @@ export const fetchPopularTVShows = cache(async (): Promise<Show[]> => {
 
     const data = await response.json();
     if (!data.results) {
-      console.error('Invalid response format from API:', data);
+      console.error('Invalid response format from TMDB:', data);
       return [];
     }
     return data.results.map((show: any) => normalizeShow(show, 'tv'));
@@ -570,11 +608,18 @@ export const fetchPopularTVShows = cache(async (): Promise<Show[]> => {
 });
 
 // Fetch top-rated TV shows
+// Calls TMDB directly to avoid function invocations from internal API routes
 export const fetchTopRatedTVShows = cache(async (): Promise<Show[]> => {
   try {
-    const response = await fetch(`${getBaseUrl()}/api/tmdb/popular?type=tv`, {
-      next: { revalidate: 1800 },
-    });
+    const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
+    const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+
+    const response = await fetch(
+      `${TMDB_BASE_URL}/tv/popular?api_key=${TMDB_API_KEY}`,
+      {
+        next: { revalidate: 1800 },
+      }
+    );
 
     if (!response.ok) {
       throw new Error('Failed to fetch top-rated TV shows');
@@ -626,33 +671,73 @@ export const fetchPopularActors = cache(async (): Promise<Actor[]> => {
 });
 
 // Search shows with caching
+// Calls TMDB directly to avoid function invocations from internal API routes
 export async function searchShows(
   query: string,
   page: number = 1,
   maxResults: number = 30
 ): Promise<TMDBResponse> {
   try {
-    const response = await fetch(
-      `${getBaseUrl()}/api/tmdb/search?q=${encodeURIComponent(
-        query
-      )}&page=${page}&maxResults=${maxResults}`,
-      {
-        next: { revalidate: 600 },
-      }
-    );
+    const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
+    const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
-    if (!response.ok) {
+    const [movieResponse, tvResponse] = await Promise.all([
+      fetch(
+        `${TMDB_BASE_URL}/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(
+          query
+        )}&page=${page}`,
+        {
+          next: { revalidate: 600 },
+        }
+      ),
+      fetch(
+        `${TMDB_BASE_URL}/search/tv?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(
+          query
+        )}&page=${page}`,
+        {
+          next: { revalidate: 600 },
+        }
+      ),
+    ]);
+
+    if (!movieResponse.ok || !tvResponse.ok) {
       throw new Error('Failed to search shows');
     }
 
-    const data = await response.json();
+    const movieData = await movieResponse.json();
+    const tvData = await tvResponse.json();
+
+    // Combine and normalize results
+    const combinedResults = [
+      ...movieData.results.map((m: any) => ({
+        ...m,
+        media_type: 'movie',
+        title: m.title || m.name,
+        name: m.name || m.title,
+      })),
+      ...tvData.results.map((t: any) => ({
+        ...t,
+        media_type: 'tv',
+        title: t.name || t.title,
+        name: t.name || t.title,
+      })),
+    ];
+
+    // Calculate pagination
+    const combinedTotal = movieData.total_results + tvData.total_results;
+    const resultsPerPage = 40;
+    const calculatedTotalPages = Math.ceil(combinedTotal / resultsPerPage);
+    const maxTotalPages = Math.max(movieData.total_pages, tvData.total_pages);
+
+    const finalResults = combinedResults.slice(0, maxResults);
+
     return {
-      results: data.results.map((show: any) =>
+      results: finalResults.map((show: any) =>
         normalizeShow(show, show.media_type || 'movie')
       ),
-      page: data.page,
-      total_pages: data.total_pages,
-      total_results: data.total_results,
+      page: parseInt(page.toString()),
+      total_pages: Math.max(calculatedTotalPages, maxTotalPages),
+      total_results: combinedTotal,
     };
   } catch (error) {
     console.error('Error searching shows:', error);

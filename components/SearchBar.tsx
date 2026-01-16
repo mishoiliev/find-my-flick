@@ -1,7 +1,7 @@
 'use client';
 
 import { performSearch, searchShowsAction } from '@/app/actions/search';
-import { Show, sortShowsByPopularity, getShowRating } from '@/lib/tmdb';
+import { getShowRating, Show, sortShowsByPopularity } from '@/lib/tmdb';
 import Fuse from 'fuse.js';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -22,52 +22,57 @@ export default function SearchBar() {
   const clientSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentSearchQueryRef = useRef<string>('');
 
-  // Initialize Fuse.js with all shows for client-side fuzzy search
-  useEffect(() => {
-    async function initializeSearch() {
-      try {
-        // Fetch a large dataset for client-side search
-        const [moviesRes, tvRes] = await Promise.all([
-          fetch(`/api/shows?type=movie&page=1`),
-          fetch(`/api/shows?type=tv&page=1`),
-        ]);
-
-        const moviesData = await moviesRes.json();
-        const tvData = await tvRes.json();
-
-        const combined = [
-          ...moviesData.results.map((m: Show) => ({
-            ...m,
-            media_type: 'movie' as const,
-          })),
-          ...tvData.results.map((t: Show) => ({
-            ...t,
-            media_type: 'tv' as const,
-          })),
-        ];
-
-        setAllShows(combined);
-
-        // Configure Fuse.js for advanced search
-        const fuseInstance = new Fuse(combined, {
-          keys: [
-            { name: 'title', weight: 0.7 },
-            { name: 'name', weight: 0.7 },
-            { name: 'overview', weight: 0.3 },
-          ],
-          threshold: 0.4, // Lower = more strict matching
-          includeScore: true,
-          minMatchCharLength: 2,
-        });
-
-        setFuse(fuseInstance);
-      } catch (error) {
-        console.error('Error initializing search:', error);
-      }
+  // Lazy-load Fuse.js data only when user interacts with search (reduces initial API calls)
+  const initializeSearch = useCallback(async () => {
+    // If already initialized, don't fetch again
+    if (fuse || allShows.length > 0) {
+      return;
     }
 
-    initializeSearch();
-  }, []);
+    try {
+      // Fetch a large dataset for client-side search with cache headers
+      const [moviesRes, tvRes] = await Promise.all([
+        fetch(`/api/shows?type=movie&page=1`, {
+          cache: 'force-cache', // Use browser cache
+        }),
+        fetch(`/api/shows?type=tv&page=1`, {
+          cache: 'force-cache', // Use browser cache
+        }),
+      ]);
+
+      const moviesData = await moviesRes.json();
+      const tvData = await tvRes.json();
+
+      const combined = [
+        ...moviesData.results.map((m: Show) => ({
+          ...m,
+          media_type: 'movie' as const,
+        })),
+        ...tvData.results.map((t: Show) => ({
+          ...t,
+          media_type: 'tv' as const,
+        })),
+      ];
+
+      setAllShows(combined);
+
+      // Configure Fuse.js for advanced search
+      const fuseInstance = new Fuse(combined, {
+        keys: [
+          { name: 'title', weight: 0.7 },
+          { name: 'name', weight: 0.7 },
+          { name: 'overview', weight: 0.3 },
+        ],
+        threshold: 0.4, // Lower = more strict matching
+        includeScore: true,
+        minMatchCharLength: 2,
+      });
+
+      setFuse(fuseInstance);
+    } catch (error) {
+      console.error('Error initializing search:', error);
+    }
+  }, [fuse, allShows.length]);
 
   // Client-side fuzzy search with debounce
   const handleClientSearch = useCallback(
@@ -178,9 +183,21 @@ export default function SearchBar() {
     }
   }, []);
 
+  // Initialize search data when user focuses on input (lazy loading)
+  const handleInputFocus = useCallback(() => {
+    if (!fuse && allShows.length === 0) {
+      initializeSearch();
+    }
+  }, [fuse, allShows.length, initializeSearch]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setQuery(value);
+
+    // Initialize search data if not already loaded
+    if (!fuse && allShows.length === 0) {
+      initializeSearch();
+    }
 
     // Clear previous debounce timeout
     if (debounceTimeoutRef.current) {
@@ -198,8 +215,10 @@ export default function SearchBar() {
     const normalizedValue = value.trim().toLowerCase();
     currentSearchQueryRef.current = normalizedValue;
 
-    // Immediate client-side fuzzy search for instant results
-    handleClientSearch(value);
+    // Immediate client-side fuzzy search for instant results (only if fuse is ready)
+    if (fuse) {
+      handleClientSearch(value);
+    }
 
     // Debounced server search for comprehensive results (500ms delay)
     debounceTimeoutRef.current = setTimeout(() => {
@@ -244,6 +263,7 @@ export default function SearchBar() {
           name='query'
           value={query}
           onChange={handleInputChange}
+          onFocus={handleInputFocus}
           placeholder='Search for movies and TV shows...'
           className='w-full px-6 py-4 text-lg rounded-full bg-[#1a1a1a] text-[#FFD700] placeholder-[#FFD700]/50 border-2 border-[#FFD700]/30 focus:border-[#FFD700] focus:outline-none transition-colors'
         />
@@ -289,11 +309,14 @@ export default function SearchBar() {
                   </span>
                   {(() => {
                     const rating = getShowRating(show);
-                    return rating > 0 && rating < 10 && (
-                      <span className='text-xs text-[#FFD700] flex items-center gap-1'>
-                        <span>⭐</span>
-                        {rating.toFixed(1)}
-                      </span>
+                    return (
+                      rating > 0 &&
+                      rating < 10 && (
+                        <span className='text-xs text-[#FFD700] flex items-center gap-1'>
+                          <span>⭐</span>
+                          {rating.toFixed(1)}
+                        </span>
+                      )
                     );
                   })()}
                 </div>

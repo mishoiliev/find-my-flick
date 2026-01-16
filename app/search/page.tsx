@@ -14,6 +14,9 @@ import {
 } from '@/lib/tmdb';
 import type { Metadata } from 'next';
 
+// Enable static generation with revalidation to reduce function invocations
+export const revalidate = 1800; // Revalidate every 30 minutes
+
 interface SearchPageProps {
   searchParams: Promise<{
     q?: string;

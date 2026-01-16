@@ -1,6 +1,9 @@
 import { discoverShowsByGenreLogic } from '@/lib/discover';
 import { NextRequest, NextResponse } from 'next/server';
 
+// Cache for 30 minutes (genre-based queries change less frequently)
+export const revalidate = 1800;
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const genreIds = searchParams.get('genres'); // Comma-separated genre IDs
@@ -36,7 +39,11 @@ export async function GET(request: NextRequest) {
       maxResults
     );
 
-    return NextResponse.json(result);
+    return NextResponse.json(result, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=1800, stale-while-revalidate=3600',
+      },
+    });
   } catch (error) {
     console.error('Error discovering shows by genre:', error);
     const errorMessage =

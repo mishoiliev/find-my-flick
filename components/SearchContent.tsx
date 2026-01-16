@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Show, Genre } from '@/lib/tmdb';
-import ShowGrid from './ShowGrid';
+import { Genre, Show } from '@/lib/tmdb';
+import { useEffect, useState } from 'react';
 import SearchGenreFilter from './SearchGenreFilter';
+import ShowGrid from './ShowGrid';
 
 interface SearchContentProps {
   initialShows: Show[];
@@ -25,7 +25,9 @@ export default function SearchContent({
   const [shows, setShows] = useState<Show[]>(initialShows);
   const [loading, setLoading] = useState(false);
   const [totalResults, setTotalResults] = useState(initialTotalResults);
-  const [selectedGenreIds, setSelectedGenreIds] = useState<number[]>(initialSelectedGenreIds);
+  const [selectedGenreIds, setSelectedGenreIds] = useState<number[]>(
+    initialSelectedGenreIds
+  );
 
   // Track previous values to detect changes
   const [prevValues, setPrevValues] = useState<string>('');
@@ -34,7 +36,7 @@ export default function SearchContent({
   useEffect(() => {
     const currentGenreIdsStr = [...selectedGenreIds].sort().join(',');
     const currentKey = `${currentGenreIdsStr}-${type}`;
-    
+
     // Skip if this is the initial mount and we have initial data
     if (prevValues === '' && initialShows.length > 0) {
       setPrevValues(currentKey);
@@ -53,7 +55,12 @@ export default function SearchContent({
         // Fetch popular shows
         setLoading(true);
         try {
-          const response = await fetch(`/api/tmdb/popular?type=${type}&limit=50`);
+          const response = await fetch(
+            `/api/tmdb/popular?type=${type}&limit=50`,
+            {
+              cache: 'force-cache', // Use browser cache
+            }
+          );
           if (response.ok) {
             const data = await response.json();
             setShows(data.results || []);
@@ -72,7 +79,10 @@ export default function SearchContent({
         try {
           const genreIdsParam = selectedGenreIds.join(',');
           const response = await fetch(
-            `/api/tmdb/discover?genres=${genreIdsParam}&type=${type}&page=1&maxResults=50`
+            `/api/tmdb/discover?genres=${genreIdsParam}&type=${type}&page=1&maxResults=50`,
+            {
+              cache: 'force-cache', // Use browser cache
+            }
           );
           if (response.ok) {
             const data = await response.json();
@@ -165,21 +175,23 @@ export default function SearchContent({
 
       {/* Show loading state or results */}
       {loading ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
+        <div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6'>
           {Array.from({ length: 18 }).map((_, i) => (
             <div
               key={i}
-              className="aspect-[2/3] bg-[#1a1a1a] rounded-lg animate-pulse"
+              className='aspect-[2/3] bg-[#1a1a1a] rounded-lg animate-pulse'
             />
           ))}
         </div>
       ) : shows.length > 0 ? (
-        <ShowGrid shows={shows} gridLayout="search" />
+        <ShowGrid shows={shows} gridLayout='search' />
       ) : (
         <div className='text-center py-12'>
           <p className='text-[#f2f2f1] text-lg'>
             {selectedGenreIds.length > 0
-              ? `No results found for the selected genre${selectedGenreIds.length > 1 ? 's' : ''}`
+              ? `No results found for the selected genre${
+                  selectedGenreIds.length > 1 ? 's' : ''
+                }`
               : query
               ? `No results found for "${query}"`
               : 'No popular shows available at the moment'}

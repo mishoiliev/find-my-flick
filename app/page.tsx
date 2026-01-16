@@ -5,6 +5,9 @@ import SearchBar from '@/components/SearchBar';
 import { fetchPopularMovies, fetchPopularTVShows } from '@/lib/tmdb';
 import { Suspense } from 'react';
 
+// Enable static generation with revalidation to reduce function invocations
+export const revalidate = 1800; // Revalidate every 30 minutes
+
 interface HomeProps {
   searchParams: Promise<{ genres?: string }>;
 }

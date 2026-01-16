@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
+// Cache for 10 minutes (search results can be cached briefly)
+export const revalidate = 600;
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const query = searchParams.get('q');
@@ -68,12 +71,19 @@ export async function GET(request: NextRequest) {
     const finalResults = combinedResults.slice(0, parseInt(maxResults));
 
     // Ensure we always return results array, even if empty
-    return NextResponse.json({
-      results: finalResults || [],
-      page: parseInt(page),
-      total_pages: Math.max(calculatedTotalPages, maxTotalPages),
-      total_results: combinedTotal,
-    });
+    return NextResponse.json(
+      {
+        results: finalResults || [],
+        page: parseInt(page),
+        total_pages: Math.max(calculatedTotalPages, maxTotalPages),
+        total_results: combinedTotal,
+      },
+      {
+        headers: {
+          'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=1800',
+        },
+      }
+    );
   } catch (error) {
     console.error('Error searching shows:', error);
     return NextResponse.json(
