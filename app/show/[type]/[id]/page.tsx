@@ -82,25 +82,33 @@ export async function generateMetadata({
       type: mediaType === 'tv' ? 'video.tv_show' : 'video.movie',
       url: canonicalUrl,
       images: [
-        {
-          url: backdropUrl || posterUrl,
-          width: 1200,
-          height: 630,
-          alt: title,
-        },
-        {
-          url: posterUrl,
-          width: 500,
-          height: 750,
-          alt: title,
-        },
+        ...(backdropUrl
+          ? [
+              {
+                url: backdropUrl,
+                width: 1200,
+                height: 630,
+                alt: title,
+              },
+            ]
+          : []),
+        ...(posterUrl
+          ? [
+              {
+                url: posterUrl,
+                width: 500,
+                height: 750,
+                alt: title,
+              },
+            ]
+          : []),
       ],
     },
     twitter: {
       card: 'summary_large_image',
       title: `${title} - Where to Watch`,
       description,
-      images: [backdropUrl || posterUrl],
+      images: backdropUrl ? [backdropUrl] : posterUrl ? [posterUrl] : [],
     },
   };
 }
