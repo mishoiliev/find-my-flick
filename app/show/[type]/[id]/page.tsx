@@ -39,78 +39,89 @@ export async function generateMetadata({
     };
   }
 
-  const show = await getShowDetails(showId, mediaType);
+  try {
+    const show = await getShowDetails(showId, mediaType);
 
-  if (!show) {
+    if (!show) {
+      return {
+        title: 'Show Not Found',
+      };
+    }
+
+    const title = getShowTitle(show);
+    const description =
+      show.overview ||
+      `Find where to watch ${title}. Discover streaming platforms, rental options, and purchase locations.`;
+    const posterUrl = getPosterUrl(show.poster_path);
+    const backdropUrl = getBackdropUrl(show.backdrop_path);
+    const siteUrl = getSiteUrl().toString();
+    const canonicalUrl = `${siteUrl}/show/${type}/${id}`;
+
+    const keywords = [
+      title,
+      mediaType === 'tv' ? 'TV show' : 'movie',
+      'where to watch',
+      'streaming',
+      'watch online',
+    ];
+
+    // Add genres if available (TMDB API returns genres but they're not in our Show type)
+    if ('genres' in show && Array.isArray((show as any).genres)) {
+      keywords.push(
+        ...(show as any).genres.map((g: { name: string }) => g.name)
+      );
+    }
+
+    // Build images array - ensure we have at least one image or use a fallback
+    const images = [];
+    if (backdropUrl) {
+      images.push({
+        url: backdropUrl,
+        width: 1200,
+        height: 630,
+        alt: title,
+      });
+    }
+    if (posterUrl) {
+      images.push({
+        url: posterUrl,
+        width: 500,
+        height: 750,
+        alt: title,
+      });
+    }
+
+    // Twitter images - use backdrop if available, otherwise poster, otherwise empty
+    const twitterImage = backdropUrl || posterUrl;
+
     return {
-      title: 'Show Not Found',
-    };
-  }
-
-  const title = getShowTitle(show);
-  const description =
-    show.overview ||
-    `Find where to watch ${title}. Discover streaming platforms, rental options, and purchase locations.`;
-  const posterUrl = getPosterUrl(show.poster_path);
-  const backdropUrl = getBackdropUrl(show.backdrop_path);
-  const siteUrl = getSiteUrl().toString();
-  const canonicalUrl = `${siteUrl}/show/${type}/${id}`;
-
-  const keywords = [
-    title,
-    mediaType === 'tv' ? 'TV show' : 'movie',
-    'where to watch',
-    'streaming',
-    'watch online',
-  ];
-
-  // Add genres if available (TMDB API returns genres but they're not in our Show type)
-  if ('genres' in show && Array.isArray((show as any).genres)) {
-    keywords.push(...(show as any).genres.map((g: { name: string }) => g.name));
-  }
-
-  return {
-    title: `${title} - Where to Watch`,
-    description,
-    keywords,
-    alternates: {
-      canonical: canonicalUrl,
-    },
-    openGraph: {
-      title: `${title} - Where to Watch | Find my Flick`,
-      description,
-      type: mediaType === 'tv' ? 'video.tv_show' : 'video.movie',
-      url: canonicalUrl,
-      images: [
-        ...(backdropUrl
-          ? [
-              {
-                url: backdropUrl,
-                width: 1200,
-                height: 630,
-                alt: title,
-              },
-            ]
-          : []),
-        ...(posterUrl
-          ? [
-              {
-                url: posterUrl,
-                width: 500,
-                height: 750,
-                alt: title,
-              },
-            ]
-          : []),
-      ],
-    },
-    twitter: {
-      card: 'summary_large_image',
       title: `${title} - Where to Watch`,
       description,
-      images: backdropUrl ? [backdropUrl] : posterUrl ? [posterUrl] : [],
-    },
-  };
+      keywords,
+      alternates: {
+        canonical: canonicalUrl,
+      },
+      openGraph: {
+        title: `${title} - Where to Watch | Find my Flick`,
+        description,
+        type: mediaType === 'tv' ? 'video.tv_show' : 'video.movie',
+        url: canonicalUrl,
+        ...(images.length > 0 && { images }),
+      },
+      twitter: {
+        card: twitterImage ? 'summary_large_image' : 'summary',
+        title: `${title} - Where to Watch`,
+        description,
+        ...(twitterImage && { images: [twitterImage] }),
+      },
+    };
+  } catch (error) {
+    console.error('Error generating metadata:', error);
+    return {
+      title: 'Show Not Found',
+      description: 'Unable to load show details.',
+    };
+  }
 }
 
 export default async function ShowDetailPage({ params }: ShowDetailPageProps) {
