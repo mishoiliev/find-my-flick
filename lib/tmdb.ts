@@ -189,23 +189,25 @@ export function getShowRating(show: Show): number {
   return show.vote_average;
 }
 
-// Get poster image path (custom loader will handle sizing)
-// Returns just the path so the custom loader can choose the optimal TMDB size
-export function getPosterUrl(posterPath: string | null): string {
+// Get poster image URL - returns full TMDB URL with optimal size
+// With unoptimized: true, we use TMDB's pre-sized images directly
+export function getPosterUrl(posterPath: string | null): string | null {
   if (!posterPath) {
-    return '/placeholder-poster.png';
+    return null; // Return null instead of non-existent placeholder
   }
-  // Return just the path - custom loader will add the size prefix
-  return posterPath.startsWith('/') ? posterPath : `/${posterPath}`;
+  // Return full TMDB URL with w500 size (good balance of quality and file size)
+  const path = posterPath.startsWith('/') ? posterPath : `/${posterPath}`;
+  return `https://image.tmdb.org/t/p/w500${path}`;
 }
 
-// Get backdrop image path (custom loader will handle sizing)
-export function getBackdropUrl(backdropPath: string | null): string {
+// Get backdrop image URL - returns full TMDB URL with optimal size
+export function getBackdropUrl(backdropPath: string | null): string | null {
   if (!backdropPath) {
-    return '/placeholder-backdrop.png';
+    return null; // Return null instead of non-existent placeholder
   }
-  // Return just the path - custom loader will add the size prefix
-  return backdropPath.startsWith('/') ? backdropPath : `/${backdropPath}`;
+  // Return full TMDB URL with w1280 size (good for backdrops)
+  const path = backdropPath.startsWith('/') ? backdropPath : `/${backdropPath}`;
+  return `https://image.tmdb.org/t/p/w1280${path}`;
 }
 
 // Sort shows by popularity (prioritizing items with posters)
@@ -378,31 +380,31 @@ export interface ActorCreditsResponse {
   crew: any[];
 }
 
-// Get provider logo path (custom loader will handle sizing)
-export function getProviderLogoUrl(logoPath: string | null): string {
+// Get provider logo URL - returns full TMDB URL
+export function getProviderLogoUrl(logoPath: string | null): string | null {
   if (!logoPath) {
-    return '/placeholder-provider.png';
+    return null; // Return null instead of non-existent placeholder
   }
-  // Return just the path - custom loader will add the size prefix
-  return logoPath.startsWith('/') ? logoPath : `/${logoPath}`;
+  const path = logoPath.startsWith('/') ? logoPath : `/${logoPath}`;
+  return `https://image.tmdb.org/t/p/w45${path}`;
 }
 
-// Get profile image path (custom loader will handle sizing)
-export function getProfileUrl(profilePath: string | null): string {
+// Get profile image URL - returns full TMDB URL
+export function getProfileUrl(profilePath: string | null): string | null {
   if (!profilePath) {
-    return '/placeholder-profile.png';
+    return null; // Return null instead of non-existent placeholder
   }
-  // Return just the path - custom loader will add the size prefix
-  return profilePath.startsWith('/') ? profilePath : `/${profilePath}`;
+  const path = profilePath.startsWith('/') ? profilePath : `/${profilePath}`;
+  return `https://image.tmdb.org/t/p/w185${path}`;
 }
 
-// Get larger profile image path for actor pages (custom loader will handle sizing)
-export function getProfileUrlLarge(profilePath: string | null): string {
+// Get larger profile image URL for actor pages - returns full TMDB URL
+export function getProfileUrlLarge(profilePath: string | null): string | null {
   if (!profilePath) {
-    return '/placeholder-profile.png';
+    return null; // Return null instead of non-existent placeholder
   }
-  // Return just the path - custom loader will add the size prefix
-  return profilePath.startsWith('/') ? profilePath : `/${profilePath}`;
+  const path = profilePath.startsWith('/') ? profilePath : `/${profilePath}`;
+  return `https://image.tmdb.org/t/p/w500${path}`;
 }
 
 // ============================================================================

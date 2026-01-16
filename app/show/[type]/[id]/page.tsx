@@ -194,7 +194,7 @@ export default async function ShowDetailPage({ params }: ShowDetailPageProps) {
     <div className='min-h-screen bg-gradient-to-b from-[#0f0f0f] via-[#1a1a1a] to-[#0a0a0a]'>
       <JsonLd data={jsonLd} />
       {/* Backdrop */}
-      {show.backdrop_path && (
+      {show.backdrop_path && backdropUrl && (
         <div className='relative h-[60vh] w-full overflow-hidden'>
           <Image
             src={backdropUrl}
@@ -202,6 +202,13 @@ export default async function ShowDetailPage({ params }: ShowDetailPageProps) {
             fill
             className='object-cover'
             priority
+            onError={(e) => {
+              // Hide broken images to prevent 404s
+              const target = e.target as HTMLImageElement;
+              if (target.parentElement) {
+                target.parentElement.style.display = 'none';
+              }
+            }}
           />
           <div className='absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent' />
         </div>
@@ -212,13 +219,20 @@ export default async function ShowDetailPage({ params }: ShowDetailPageProps) {
           {/* Poster */}
           <div className='flex-shrink-0'>
             <div className='w-48 md:w-64 aspect-[2/3] relative rounded-lg overflow-hidden shadow-2xl'>
-              {show.poster_path ? (
+              {show.poster_path && posterUrl ? (
                 <Image
                   src={posterUrl}
                   alt={title}
                   fill
                   className='object-cover'
                   sizes='(max-width: 768px) 192px, 256px'
+                  onError={(e) => {
+                    // Hide broken images to prevent 404s
+                    const target = e.target as HTMLImageElement;
+                    if (target.parentElement) {
+                      target.parentElement.style.display = 'none';
+                    }
+                  }}
                 />
               ) : (
                 <div className='w-full h-full bg-[#1a1a1a] flex items-center justify-center'>

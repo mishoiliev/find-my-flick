@@ -43,7 +43,7 @@ export default function ActorHeader({ actor }: ActorHeaderProps) {
       if (contentRef.current) {
         const fullHeight = contentRef.current.scrollHeight;
         let collapsedHeight = 0;
-        
+
         if (collapsedHeightRef.current) {
           collapsedHeight = collapsedHeightRef.current.scrollHeight;
         } else {
@@ -57,7 +57,7 @@ export default function ActorHeader({ actor }: ActorHeaderProps) {
         // Check if there's actually more content to show
         // Add a small buffer (10px) to account for measurement differences
         setHasMoreContent(fullHeight > collapsedHeight + 10);
-        
+
         if (isBiographyExpanded) {
           // Expanded: use full height
           setMaxHeight(`${fullHeight}px`);
@@ -83,7 +83,7 @@ export default function ActorHeader({ actor }: ActorHeaderProps) {
     if (wasExpanded && !willBeExpanded && contentRef.current) {
       const fullHeight = contentRef.current.scrollHeight;
       let collapsedHeight = 0;
-      
+
       if (collapsedHeightRef.current) {
         collapsedHeight = collapsedHeightRef.current.scrollHeight;
       } else {
@@ -94,12 +94,13 @@ export default function ActorHeader({ actor }: ActorHeaderProps) {
       }
 
       const heightDifference = fullHeight - collapsedHeight;
-      
+
       // Get the position of the biography container relative to viewport
       if (biographyContainerRef.current && heightDifference > 0) {
-        const containerRect = biographyContainerRef.current.getBoundingClientRect();
+        const containerRect =
+          biographyContainerRef.current.getBoundingClientRect();
         const scrollY = window.scrollY || window.pageYOffset;
-        
+
         // Check if the container is above the viewport (user has scrolled past it)
         // Only scroll if the container top is above the viewport
         if (containerRect.top < 0) {
@@ -111,13 +112,14 @@ export default function ActorHeader({ actor }: ActorHeaderProps) {
           const animateScroll = (currentTime: number) => {
             const elapsed = currentTime - startTime;
             const progress = Math.min(elapsed / duration, 1);
-            
+
             // Use ease-in-out easing to match the CSS transition
-            const easeInOut = progress < 0.5
-              ? 2 * progress * progress
-              : 1 - Math.pow(-2 * progress + 2, 2) / 2;
-            
-            const currentScrollY = startScrollY - (heightDifference * easeInOut);
+            const easeInOut =
+              progress < 0.5
+                ? 2 * progress * progress
+                : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+
+            const currentScrollY = startScrollY - heightDifference * easeInOut;
             window.scrollTo(0, currentScrollY);
 
             if (progress < 1) {
@@ -144,13 +146,12 @@ export default function ActorHeader({ actor }: ActorHeaderProps) {
     };
   }, []);
 
-
   return (
     <div className='flex flex-col md:flex-row gap-8 mb-12'>
       {/* Profile Image */}
       <div className='flex-shrink-0'>
         <div className='w-48 md:w-64 aspect-[2/3] relative rounded-lg overflow-hidden shadow-2xl border-2 border-[#FFD700]/20'>
-          {actor.profile_path ? (
+          {actor.profile_path && profileUrl ? (
             <Image
               src={profileUrl}
               alt={actor.name}
@@ -158,6 +159,13 @@ export default function ActorHeader({ actor }: ActorHeaderProps) {
               className='object-cover'
               sizes='(max-width: 768px) 192px, 256px'
               priority
+              onError={(e) => {
+                // Hide broken images to prevent 404s
+                const target = e.target as HTMLImageElement;
+                if (target.parentElement) {
+                  target.parentElement.style.display = 'none';
+                }
+              }}
             />
           ) : (
             <div className='w-full h-full bg-[#1a1a1a] flex items-center justify-center'>
@@ -214,7 +222,9 @@ export default function ActorHeader({ actor }: ActorHeaderProps) {
                 <span
                   ref={contentRef}
                   className={`block overflow-hidden transition-[max-height] duration-500 ease-in-out relative ${
-                    hasMoreContent && !isBiographyExpanded ? 'biography-collapsed' : ''
+                    hasMoreContent && !isBiographyExpanded
+                      ? 'biography-collapsed'
+                      : ''
                   }`}
                   style={{ maxHeight: maxHeight }}
                 >

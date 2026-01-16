@@ -44,13 +44,20 @@ export default function ShowCard({
       }`}
     >
       <div className='aspect-[2/3] relative'>
-        {show.poster_path ? (
+        {show.poster_path && posterUrl ? (
           <Image
             src={posterUrl}
             alt={title}
             fill
             className='object-cover group-hover:opacity-80 transition-opacity'
             sizes={imageSizes}
+            onError={(e) => {
+              // Hide broken images to prevent 404s
+              const target = e.target as HTMLImageElement;
+              if (target.parentElement) {
+                target.parentElement.style.display = 'none';
+              }
+            }}
           />
         ) : (
           <div className='w-full h-full bg-[#1a1a1a] flex items-center justify-center'>

@@ -222,15 +222,23 @@ export default function WatchProviders({
                   key={provider.provider_id}
                   className='flex items-center gap-2 bg-[#0a0a0a] px-4 py-2 rounded-lg border border-[#FFD700]/20 hover:border-[#FFD700]/50 hover:bg-[#1a1a1a] transition-all'
                 >
-                  {provider.logo_path && (
-                    <Image
-                      src={getProviderLogoUrl(provider.logo_path)}
-                      alt={provider.provider_name}
-                      width={45}
-                      height={45}
-                      className='rounded'
-                    />
-                  )}
+                  {provider.logo_path &&
+                    getProviderLogoUrl(provider.logo_path) && (
+                      <Image
+                        src={getProviderLogoUrl(provider.logo_path)!}
+                        alt={provider.provider_name}
+                        width={45}
+                        height={45}
+                        className='rounded'
+                        onError={(e) => {
+                          // Hide broken images to prevent 404s
+                          const target = e.target as HTMLImageElement;
+                          if (target.parentElement) {
+                            target.parentElement.style.display = 'none';
+                          }
+                        }}
+                      />
+                    )}
                   <span className='text-[#FFD700] font-medium text-sm'>
                     {provider.provider_name}
                   </span>
@@ -252,15 +260,23 @@ export default function WatchProviders({
                   key={provider.provider_id}
                   className='flex items-center gap-2 bg-[#0a0a0a] px-4 py-2 rounded-lg border border-[#FFD700]/20 hover:border-[#FFD700]/50 hover:bg-[#1a1a1a] transition-all'
                 >
-                  {provider.logo_path && (
-                    <Image
-                      src={getProviderLogoUrl(provider.logo_path)}
-                      alt={provider.provider_name}
-                      width={45}
-                      height={45}
-                      className='rounded'
-                    />
-                  )}
+                  {provider.logo_path &&
+                    getProviderLogoUrl(provider.logo_path) && (
+                      <Image
+                        src={getProviderLogoUrl(provider.logo_path)!}
+                        alt={provider.provider_name}
+                        width={45}
+                        height={45}
+                        className='rounded'
+                        onError={(e) => {
+                          // Hide broken images to prevent 404s
+                          const target = e.target as HTMLImageElement;
+                          if (target.parentElement) {
+                            target.parentElement.style.display = 'none';
+                          }
+                        }}
+                      />
+                    )}
                   <span className='text-[#FFD700] font-medium text-sm'>
                     {provider.provider_name}
                   </span>
@@ -282,15 +298,23 @@ export default function WatchProviders({
                   key={provider.provider_id}
                   className='flex items-center gap-2 bg-[#0a0a0a] px-4 py-2 rounded-lg border border-[#FFD700]/20 hover:border-[#FFD700]/50 hover:bg-[#1a1a1a] transition-all'
                 >
-                  {provider.logo_path && (
-                    <Image
-                      src={getProviderLogoUrl(provider.logo_path)}
-                      alt={provider.provider_name}
-                      width={45}
-                      height={45}
-                      className='rounded'
-                    />
-                  )}
+                  {provider.logo_path &&
+                    getProviderLogoUrl(provider.logo_path) && (
+                      <Image
+                        src={getProviderLogoUrl(provider.logo_path)!}
+                        alt={provider.provider_name}
+                        width={45}
+                        height={45}
+                        className='rounded'
+                        onError={(e) => {
+                          // Hide broken images to prevent 404s
+                          const target = e.target as HTMLImageElement;
+                          if (target.parentElement) {
+                            target.parentElement.style.display = 'none';
+                          }
+                        }}
+                      />
+                    )}
                   <span className='text-[#FFD700] font-medium text-sm'>
                     {provider.provider_name}
                   </span>

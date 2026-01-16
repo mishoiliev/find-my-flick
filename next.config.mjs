@@ -7,12 +7,9 @@ const nextConfig = {
         hostname: 'image.tmdb.org',
       },
     ],
-    // Use custom loader to leverage TMDB's native size variants
-    // This eliminates Vercel image optimization costs entirely
-    loader: 'custom',
-    loaderFile: './lib/tmdb-image-loader.ts',
-    // Keep these for fallback if loader fails
-    minimumCacheTTL: 31536000,
+    // Completely disable image optimization to eliminate ALL /_next/image requests
+    // TMDB images are already optimized, so we don't need Vercel's optimization
+    unoptimized: true,
   },
 };
 
