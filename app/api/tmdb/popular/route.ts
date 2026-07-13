@@ -1,15 +1,24 @@
+import {
+  CACHE_TTL,
+  noStoreHeaders,
+  publicCacheHeaders,
+} from '@/lib/http-cache';
 import { NextRequest, NextResponse } from 'next/server';
 
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
-// Cache for 1 hour to reduce function invocations
-export const revalidate = 3600;
+export const revalidate = 86400;
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
-  const type = searchParams.get('type') || 'all'; // 'all', 'movie', 'tv'
-  const limit = parseInt(searchParams.get('limit') || '20', 10);
+  const typeParam = searchParams.get('type');
+  const type =
+    typeParam === 'movie' || typeParam === 'tv' ? typeParam : 'all';
+  const limit = Math.max(
+    1,
+    Math.min(50, parseInt(searchParams.get('limit') || '20', 10) || 20)
+  );
 
   try {
     let results: any[] = [];
@@ -24,13 +33,13 @@ export async function GET(request: NextRequest) {
           fetch(
             `${TMDB_BASE_URL}/movie/popular?api_key=${TMDB_API_KEY}&page=${page}`,
             {
-              next: { revalidate: 3600 }, // Cache for 1 hour
+              next: { revalidate: CACHE_TTL.catalog },
             }
           ),
           fetch(
             `${TMDB_BASE_URL}/tv/popular?api_key=${TMDB_API_KEY}&page=${page}`,
             {
-              next: { revalidate: 3600 }, // Cache for 1 hour
+              next: { revalidate: CACHE_TTL.catalog },
             }
           )
         );
@@ -92,7 +101,7 @@ export async function GET(request: NextRequest) {
           fetch(
             `${TMDB_BASE_URL}/movie/popular?api_key=${TMDB_API_KEY}&page=${page}`,
             {
-              next: { revalidate: 3600 }, // Cache for 1 hour
+              next: { revalidate: CACHE_TTL.catalog },
             }
           )
         );
@@ -125,7 +134,7 @@ export async function GET(request: NextRequest) {
           fetch(
             `${TMDB_BASE_URL}/tv/popular?api_key=${TMDB_API_KEY}&page=${page}`,
             {
-              next: { revalidate: 3600 }, // Cache for 1 hour
+              next: { revalidate: CACHE_TTL.catalog },
             }
           )
         );
@@ -155,17 +164,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       { results: results || [] },
       {
-        headers: {
-          'Cache-Control':
-            'public, s-maxage=3600, stale-while-revalidate=86400',
-        },
+        headers: publicCacheHeaders(CACHE_TTL.catalog),
       }
     );
   } catch (error) {
     console.error('Error fetching popular shows:', error);
     return NextResponse.json(
       { error: 'Failed to fetch popular shows' },
-      { status: 500 }
+      { status: 502, headers: noStoreHeaders }
     );
   }
 }

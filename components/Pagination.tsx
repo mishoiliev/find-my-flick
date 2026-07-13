@@ -64,6 +64,7 @@ export default function Pagination({
       {/* Previous Button */}
       <Link
         href={createPageUrl(currentPage - 1)}
+        prefetch={false}
         className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
           currentPage === 1
             ? 'bg-[#1a1a1a] text-[#FFD700]/30 cursor-not-allowed pointer-events-none border border-[#FFD700]/10'
@@ -95,6 +96,7 @@ export default function Pagination({
             <Link
               key={pageNum}
               href={createPageUrl(pageNum)}
+              prefetch={false}
               className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
                 isActive
                   ? 'bg-[#FFD700] text-[#000000] border border-[#FFD700]'
@@ -110,6 +112,7 @@ export default function Pagination({
       {/* Next Button */}
       <Link
         href={createPageUrl(currentPage + 1)}
+        prefetch={false}
         className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
           currentPage === totalPages
             ? 'bg-[#1a1a1a] text-[#FFD700]/30 cursor-not-allowed pointer-events-none border border-[#FFD700]/10'

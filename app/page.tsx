@@ -5,27 +5,15 @@ import SearchBar from '@/components/SearchBar';
 import { fetchPopularMovies, fetchPopularTVShows } from '@/lib/tmdb';
 import { Suspense } from 'react';
 
-// Enable static generation with revalidation to reduce function invocations
-export const revalidate = 1800; // Revalidate every 30 minutes
+// The home page is shared by every visitor. Keep it in ISR instead of turning
+// every visit into a Function invocation by reading request search params.
+export const revalidate = 86400;
 
-interface HomeProps {
-  searchParams: Promise<{ genres?: string }>;
-}
-
-export default async function Home({ searchParams }: HomeProps) {
-  const resolvedSearchParams = await searchParams;
+export default async function Home() {
   const [popularMovies, popularTVShows] = await Promise.all([
     fetchPopularMovies(),
     fetchPopularTVShows(),
   ]);
-
-  // Parse selected genres from URL
-  const selectedGenreIds = resolvedSearchParams.genres
-    ? resolvedSearchParams.genres
-        .split(',')
-        .map((id) => parseInt(id.trim()))
-        .filter((id) => !isNaN(id))
-    : [];
 
   return (
     <main className='min-h-screen bg-gradient-to-b from-[#0f0f0f] via-[#1a1a1a] to-[#0a0a0a]'>
@@ -50,11 +38,12 @@ export default async function Home({ searchParams }: HomeProps) {
           <BrowseByGenre />
         </Suspense>
 
-        <HomeContent
-          popularMovies={popularMovies}
-          popularTVShows={popularTVShows}
-          selectedGenreIds={selectedGenreIds}
-        />
+        <Suspense>
+          <HomeContent
+            popularMovies={popularMovies}
+            popularTVShows={popularTVShows}
+          />
+        </Suspense>
       </div>
     </main>
   );

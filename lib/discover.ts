@@ -1,5 +1,7 @@
 // Shared discover logic that can be used by both API routes and server components
 
+import { CACHE_TTL } from './http-cache';
+
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
@@ -26,13 +28,13 @@ export async function discoverShowsByGenreLogic(
       fetch(
         `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&with_genres=${combinedGenreIds}&sort_by=popularity.desc&page=${page}`,
         {
-          next: { revalidate: 1800 },
+          next: { revalidate: CACHE_TTL.catalog },
         }
       ),
       fetch(
         `${TMDB_BASE_URL}/discover/tv?api_key=${TMDB_API_KEY}&with_genres=${combinedGenreIds}&sort_by=popularity.desc&page=${page}`,
         {
-          next: { revalidate: 1800 },
+          next: { revalidate: CACHE_TTL.catalog },
         }
       ),
     ]);
@@ -78,7 +80,7 @@ export async function discoverShowsByGenreLogic(
     const response = await fetch(
       `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&with_genres=${combinedGenreIds}&sort_by=popularity.desc&page=${page}`,
       {
-        next: { revalidate: 1800 },
+        next: { revalidate: CACHE_TTL.catalog },
       }
     );
 
@@ -103,7 +105,7 @@ export async function discoverShowsByGenreLogic(
     const response = await fetch(
       `${TMDB_BASE_URL}/discover/tv?api_key=${TMDB_API_KEY}&with_genres=${combinedGenreIds}&sort_by=popularity.desc&page=${page}`,
       {
-        next: { revalidate: 1800 },
+        next: { revalidate: CACHE_TTL.catalog },
       }
     );
 

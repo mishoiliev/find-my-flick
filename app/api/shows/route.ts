@@ -1,42 +1,67 @@
+import {
+  CACHE_TTL,
+  noStoreHeaders,
+  publicCacheHeaders,
+} from '@/lib/http-cache';
 import { NextRequest, NextResponse } from 'next/server';
 
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
-// Cache for 1 hour (3600 seconds) to reduce function invocations
-export const revalidate = 3600;
+export const revalidate = 86400;
 
 export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams;
-  const type = searchParams.get('type') || 'movie';
-  const page = searchParams.get('page') || '1';
+  const requestedType = request.nextUrl.searchParams.get('type');
+  const type =
+    requestedType === 'movie' || requestedType === 'tv'
+      ? requestedType
+      : 'all';
+  const page = Math.max(
+    1,
+    Math.min(
+      500,
+      parseInt(request.nextUrl.searchParams.get('page') || '1', 10) || 1
+    )
+  );
+  const mediaTypes: Array<'movie' | 'tv'> =
+    type === 'all' ? ['movie', 'tv'] : [type];
 
   try {
-    const endpoint = type === 'tv' ? 'tv/popular' : 'movie/popular';
-    const response = await fetch(
-      `${TMDB_BASE_URL}/${endpoint}?api_key=${TMDB_API_KEY}&page=${page}`,
-      {
-        next: { revalidate: 3600 }, // Cache for 1 hour
-      }
+    const responses = await Promise.all(
+      mediaTypes.map((mediaType) =>
+        fetch(
+          `${TMDB_BASE_URL}/${mediaType}/popular?api_key=${TMDB_API_KEY}&page=${page}`,
+          { next: { revalidate: CACHE_TTL.catalog } }
+        )
+      )
     );
 
-    if (!response.ok) {
-      throw new Error('Failed to fetch shows');
+    if (responses.some((response) => !response.ok)) {
+      throw new Error('TMDB popular request failed');
     }
 
-    const data = await response.json();
-    
-    // Add cache headers for browser/CDN caching
-    return NextResponse.json(data, {
-      headers: {
-        'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
-      },
-    });
-  } catch (error) {
-    console.error('Error fetching shows:', error);
+    const payloads = await Promise.all(responses.map((response) => response.json()));
+    const results = payloads
+      .flatMap((payload, index) => {
+        const mediaType = mediaTypes[index];
+        return (payload.results || []).map((show: any) => ({
+          ...show,
+          media_type: mediaType,
+          title: show.title || show.name,
+          name: show.name || show.title,
+        }));
+      })
+      .sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+
     return NextResponse.json(
-      { error: 'Failed to fetch shows' },
-      { status: 500 }
+      { results },
+      { headers: publicCacheHeaders(CACHE_TTL.catalog) }
+    );
+  } catch (error) {
+    console.error('Error fetching search suggestions:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch shows', results: [] },
+      { status: 502, headers: noStoreHeaders }
     );
   }
 }

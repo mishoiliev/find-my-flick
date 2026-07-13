@@ -7,8 +7,13 @@ import ActorHeader from './components/ActorHeader';
 import AllCreditsSkeleton from './components/AllCreditsSkeleton';
 import MostPopularShowsSkeleton from './components/MostPopularShowsSkeleton';
 
-// Enable static generation with revalidation to reduce function invocations
-export const revalidate = 3600; // Revalidate every hour
+// Build each actor page on its first real visit, then keep it in ISR.
+export const revalidate = 86400;
+export const dynamicParams = true;
+
+export function generateStaticParams() {
+  return [];
+}
 
 interface ActorPageProps {
   params: Promise<{

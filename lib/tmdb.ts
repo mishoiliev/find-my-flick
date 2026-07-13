@@ -2,6 +2,9 @@
 // NOTE: Server-side functions call TMDB directly to avoid function invocations.
 // API routes in /app/api/tmdb/* are kept for client-side usage only.
 
+import { CACHE_TTL } from './http-cache';
+import { cache } from 'react';
+
 export interface Genre {
   id: number;
   name: string;
@@ -408,52 +411,9 @@ export function getProfileUrlLarge(profilePath: string | null): string | null {
 }
 
 // ============================================================================
-// SERVER-SIDE API WRAPPER FUNCTIONS
-// These functions call the API routes and should ONLY be used in server components/actions
+// SERVER-SIDE TMDB FUNCTIONS
+// These functions should only be called by Server Components and Route Handlers.
 // ============================================================================
-
-import { cache } from 'react';
-
-// Helper to get base URL for API calls (server-side only)
-// Uses relative URLs for internal API calls, which Next.js handles automatically
-function getBaseUrl(): string {
-  // In server components, we can use relative URLs for internal API routes
-  // Next.js will automatically resolve them to the correct absolute URL
-  // However, for some edge cases, we may need an absolute URL
-
-  // In development, always use localhost (ignore production env vars)
-  if (process.env.NODE_ENV !== 'production') {
-    // Check for PORT environment variable (used when running PORT=3001 bun run dev)
-    // Next.js dev server respects the PORT env var
-    const port = process.env.PORT || '3000';
-    return `http://localhost:${port}`;
-  }
-
-  // In production, use environment variables if available
-  // Use NEXT_PUBLIC_SITE_URL if available (set in environment variables)
-  if (process.env.NEXT_PUBLIC_SITE_URL) {
-    let url = process.env.NEXT_PUBLIC_SITE_URL.trim();
-    // Ensure it has a protocol
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      url = `https://${url}`;
-    }
-    // Ensure it doesn't end with a slash
-    return url.endsWith('/') ? url.slice(0, -1) : url;
-  }
-
-  // In Vercel production, use VERCEL_URL if available
-  if (process.env.VERCEL_URL) {
-    const vercelUrl = process.env.VERCEL_URL.trim();
-    // VERCEL_URL might already include protocol or might not
-    if (vercelUrl.startsWith('http://') || vercelUrl.startsWith('https://')) {
-      return vercelUrl;
-    }
-    return `https://${vercelUrl}`;
-  }
-
-  // Fallback to production URL
-  return 'https://findmyflick.space';
-}
 
 // Fetch popular shows (both movies and TV) with caching
 // Calls TMDB directly to avoid function invocations from internal API routes
@@ -466,10 +426,10 @@ export const fetchPopularShows = cache(
       // Fetch both movies and TV shows
       const [moviesRes, tvRes] = await Promise.all([
         fetch(`${TMDB_BASE_URL}/movie/popular?api_key=${TMDB_API_KEY}`, {
-          next: { revalidate: 1800 },
+          next: { revalidate: CACHE_TTL.catalog },
         }),
         fetch(`${TMDB_BASE_URL}/tv/popular?api_key=${TMDB_API_KEY}`, {
-          next: { revalidate: 1800 },
+          next: { revalidate: CACHE_TTL.catalog },
         }),
       ]);
 
@@ -531,7 +491,7 @@ export const fetchPopularMovies = cache(async (): Promise<Show[]> => {
     const response = await fetch(
       `${TMDB_BASE_URL}/movie/popular?api_key=${TMDB_API_KEY}`,
       {
-        next: { revalidate: 1800 }, // Cache for 30 minutes
+        next: { revalidate: CACHE_TTL.catalog },
       }
     );
 
@@ -565,7 +525,7 @@ export const fetchTopRatedMovies = cache(async (): Promise<Show[]> => {
     const response = await fetch(
       `${TMDB_BASE_URL}/movie/popular?api_key=${TMDB_API_KEY}`,
       {
-        next: { revalidate: 1800 },
+        next: { revalidate: CACHE_TTL.catalog },
       }
     );
 
@@ -591,7 +551,7 @@ export const fetchPopularTVShows = cache(async (): Promise<Show[]> => {
     const response = await fetch(
       `${TMDB_BASE_URL}/tv/popular?api_key=${TMDB_API_KEY}`,
       {
-        next: { revalidate: 1800 }, // Cache for 30 minutes
+        next: { revalidate: CACHE_TTL.catalog },
       }
     );
 
@@ -625,7 +585,7 @@ export const fetchTopRatedTVShows = cache(async (): Promise<Show[]> => {
     const response = await fetch(
       `${TMDB_BASE_URL}/tv/popular?api_key=${TMDB_API_KEY}`,
       {
-        next: { revalidate: 1800 },
+        next: { revalidate: CACHE_TTL.catalog },
       }
     );
 
@@ -673,7 +633,7 @@ export const fetchPopularActors = cache(async (): Promise<Actor[]> => {
         fetch(
           `${TMDB_BASE_URL}/person/popular?api_key=${TMDB_API_KEY}&page=${page}`,
           {
-            next: { revalidate: 86400 }, // Cache for 24 hours
+            next: { revalidate: CACHE_TTL.catalog },
           }
         )
       )
@@ -712,7 +672,7 @@ export async function searchShows(
           query
         )}&page=${page}`,
         {
-          next: { revalidate: 600 },
+          next: { revalidate: CACHE_TTL.search },
         }
       ),
       fetch(
@@ -720,7 +680,7 @@ export async function searchShows(
           query
         )}&page=${page}`,
         {
-          next: { revalidate: 600 },
+          next: { revalidate: CACHE_TTL.search },
         }
       ),
     ]);
@@ -817,7 +777,7 @@ export const getShowDetails = cache(
       const response = await fetch(
         `${TMDB_BASE_URL}/${mediaType}/${id}?api_key=${TMDB_API_KEY}`,
         {
-          next: { revalidate: 3600 }, // Cache for 1 hour
+          next: { revalidate: CACHE_TTL.catalog },
         }
       );
 
@@ -883,7 +843,7 @@ export const getWatchProviders = cache(
       const response = await fetch(
         `${TMDB_BASE_URL}/${mediaType}/${id}/watch/providers?api_key=${TMDB_API_KEY}`,
         {
-          next: { revalidate: 86400 }, // Cache for 24 hours
+          next: { revalidate: CACHE_TTL.providers },
         }
       );
 
@@ -914,7 +874,7 @@ export const getShowCredits = cache(
       const response = await fetch(
         `${TMDB_BASE_URL}/${mediaType}/${id}/credits?api_key=${TMDB_API_KEY}`,
         {
-          next: { revalidate: 3600 }, // Cache for 1 hour
+          next: { revalidate: CACHE_TTL.catalog },
         }
       );
 
@@ -942,7 +902,7 @@ export const getActorDetails = cache(
       const response = await fetch(
         `${TMDB_BASE_URL}/person/${id}?api_key=${TMDB_API_KEY}`,
         {
-          next: { revalidate: 3600 }, // Cache for 1 hour
+          next: { revalidate: CACHE_TTL.catalog },
         }
       );
 
@@ -970,7 +930,7 @@ export const getActorCreditsBasic = cache(
       const response = await fetch(
         `${TMDB_BASE_URL}/person/${id}/combined_credits?api_key=${TMDB_API_KEY}`,
         {
-          next: { revalidate: 3600 }, // Cache for 1 hour
+          next: { revalidate: CACHE_TTL.catalog },
         }
       );
 
@@ -1006,7 +966,7 @@ export const getActorCredits = cache(async (id: number): Promise<Show[]> => {
     const response = await fetch(
       `${TMDB_BASE_URL}/person/${id}/combined_credits?api_key=${TMDB_API_KEY}`,
       {
-        next: { revalidate: 3600 }, // Cache for 1 hour
+        next: { revalidate: CACHE_TTL.catalog },
       }
     );
 

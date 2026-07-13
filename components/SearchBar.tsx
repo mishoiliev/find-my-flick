@@ -1,253 +1,97 @@
 'use client';
 
-import { performSearch, searchShowsAction } from '@/app/actions/search';
-import { getShowRating, Show, sortShowsByPopularity } from '@/lib/tmdb';
+import {
+  getShowRating,
+  Show,
+  sortShowsByPopularity,
+} from '@/lib/tmdb';
 import Fuse from 'fuse.js';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 
 export default function SearchBar() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState(searchParams.get('q') || '');
   const [results, setResults] = useState<Show[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
-  const [allShows, setAllShows] = useState<Show[]>([]);
   const [fuse, setFuse] = useState<Fuse<Show> | null>(null);
+  const initializingRef = useRef(false);
 
-  // Refs for debouncing and tracking current search
-  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const clientSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const currentSearchQueryRef = useRef<string>('');
-
-  // Lazy-load Fuse.js data only when user interacts with search (reduces initial API calls)
+  // One CDN-cached catalog powers instant suggestions. Comprehensive TMDB
+  // search only happens after an explicit form submission on /search.
   const initializeSearch = useCallback(async () => {
-    // If already initialized, don't fetch again
-    if (fuse || allShows.length > 0) {
-      return;
-    }
+    if (fuse || initializingRef.current) return;
+    initializingRef.current = true;
 
     try {
-      // Fetch a large dataset for client-side search with cache headers
-      const [moviesRes, tvRes] = await Promise.all([
-        fetch(`/api/shows?type=movie&page=1`, {
-          cache: 'force-cache', // Use browser cache
-        }),
-        fetch(`/api/shows?type=tv&page=1`, {
-          cache: 'force-cache', // Use browser cache
-        }),
-      ]);
-
-      const moviesData = await moviesRes.json();
-      const tvData = await tvRes.json();
-
-      const combined = [
-        ...moviesData.results.map((m: Show) => ({
-          ...m,
-          media_type: 'movie' as const,
-        })),
-        ...tvData.results.map((t: Show) => ({
-          ...t,
-          media_type: 'tv' as const,
-        })),
-      ];
-
-      setAllShows(combined);
-
-      // Configure Fuse.js for advanced search
-      const fuseInstance = new Fuse(combined, {
-        keys: [
-          { name: 'title', weight: 0.7 },
-          { name: 'name', weight: 0.7 },
-          { name: 'overview', weight: 0.3 },
-        ],
-        threshold: 0.4, // Lower = more strict matching
-        includeScore: true,
-        minMatchCharLength: 2,
+      const response = await fetch('/api/shows?type=all&page=1', {
+        cache: 'default',
       });
+      if (!response.ok) throw new Error(`Request failed: ${response.status}`);
 
-      setFuse(fuseInstance);
+      const data = (await response.json()) as { results?: Show[] };
+      const shows = data.results || [];
+      setFuse(
+        new Fuse(shows, {
+          keys: [
+            { name: 'title', weight: 0.7 },
+            { name: 'name', weight: 0.7 },
+            { name: 'overview', weight: 0.3 },
+          ],
+          threshold: 0.4,
+          includeScore: true,
+          minMatchCharLength: 2,
+        })
+      );
     } catch (error) {
-      console.error('Error initializing search:', error);
-    }
-  }, [fuse, allShows.length]);
-
-  // Client-side fuzzy search with debounce
-  const handleClientSearch = useCallback(
-    (searchQuery: string) => {
-      // Clear previous timeout
-      if (clientSearchTimeoutRef.current) {
-        clearTimeout(clientSearchTimeoutRef.current);
-      }
-
-      if (!fuse || !searchQuery.trim()) {
-        setResults([]);
-        setShowResults(false);
-        currentSearchQueryRef.current = '';
-        return;
-      }
-
-      const normalizedQuery = searchQuery.trim().toLowerCase();
-      currentSearchQueryRef.current = normalizedQuery;
-
-      // Debounce client-side search (100ms for instant feel)
-      clientSearchTimeoutRef.current = setTimeout(() => {
-        // Double-check query still matches before showing results
-        if (currentSearchQueryRef.current !== normalizedQuery) {
-          return;
-        }
-
-        const searchResults = fuse.search(searchQuery);
-        const matches = searchResults.map((result) => result.item);
-
-        // Filter matches to ensure they actually match the query
-        const searchTerms = normalizedQuery
-          .split(' ')
-          .filter((term) => term.length > 0);
-        const filteredMatches = matches.filter((show) => {
-          const title = (show.title || show.name || '').toLowerCase();
-          const overview = (show.overview || '').toLowerCase();
-
-          // Check if all search terms appear in title or overview
-          return searchTerms.every(
-            (term) => title.includes(term) || overview.includes(term)
-          );
-        });
-
-        // Only update if query still matches
-        if (currentSearchQueryRef.current === normalizedQuery) {
-          // Sort by popularity and prioritize items with posters
-          const sortedMatches = sortShowsByPopularity(filteredMatches);
-          setResults(sortedMatches.slice(0, 15)); // Show top 15 results
-          setShowResults(true);
-        }
-      }, 100);
-    },
-    [fuse]
-  );
-
-  // Server-side search (for more comprehensive results) with caching
-  // This only updates the dropdown results - navigation happens on form submit
-  const handleServerSearch = useCallback(async (searchQuery: string) => {
-    if (!searchQuery.trim()) {
-      setResults([]);
-      setShowResults(false);
-      currentSearchQueryRef.current = '';
-      return;
-    }
-
-    // Update the current search query ref
-    currentSearchQueryRef.current = searchQuery.trim().toLowerCase();
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-
-    setIsSearching(true);
-    setShowResults(true);
-
-    try {
-      // Use server action for search
-      const sortedResults = await searchShowsAction(searchQuery);
-
-      // Only update results if the query still matches (prevents stale results)
-      if (currentSearchQueryRef.current === normalizedQuery) {
-        // Filter results to ensure they match the current query
-        // This adds an extra layer of protection against cached mismatched results
-        const filteredResults = sortedResults.filter((show) => {
-          const title = (show.title || show.name || '').toLowerCase();
-          const overview = (show.overview || '').toLowerCase();
-          const searchTerms = normalizedQuery
-            .split(' ')
-            .filter((term) => term.length > 0);
-
-          // Check if all search terms appear in title or overview
-          return searchTerms.every(
-            (term) => title.includes(term) || overview.includes(term)
-          );
-        });
-
-        setResults(filteredResults);
-      }
-      // If query doesn't match, ignore these results (newer search is in progress)
-    } catch (error) {
-      console.error('Search error:', error);
-      // Only clear results if this is still the current query
-      if (currentSearchQueryRef.current === normalizedQuery) {
-        setResults([]);
-      }
+      console.error('Error initializing search suggestions:', error);
     } finally {
-      // Only update loading state if this is still the current query
-      if (currentSearchQueryRef.current === normalizedQuery) {
-        setIsSearching(false);
-      }
+      initializingRef.current = false;
     }
-  }, []);
+  }, [fuse]);
 
-  // Initialize search data when user focuses on input (lazy loading)
-  const handleInputFocus = useCallback(() => {
-    if (!fuse && allShows.length === 0) {
-      initializeSearch();
-    }
-  }, [fuse, allShows.length, initializeSearch]);
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setQuery(value);
-
-    // Initialize search data if not already loaded
-    if (!fuse && allShows.length === 0) {
-      initializeSearch();
-    }
-
-    // Clear previous debounce timeout
-    if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current);
-    }
-
-    if (!value.trim()) {
-      currentSearchQueryRef.current = '';
+  useEffect(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!fuse || normalizedQuery.length < 2) {
       setResults([]);
       setShowResults(false);
       return;
     }
 
-    // Update current search query ref immediately
-    const normalizedValue = value.trim().toLowerCase();
-    currentSearchQueryRef.current = normalizedValue;
+    const timeout = window.setTimeout(() => {
+      const searchTerms = normalizedQuery.split(/\s+/).filter(Boolean);
+      const matches = fuse
+        .search(query)
+        .map((result) => result.item)
+        .filter((show) => {
+          const title = (show.title || show.name || '').toLowerCase();
+          const overview = (show.overview || '').toLowerCase();
+          return searchTerms.every(
+            (term) => title.includes(term) || overview.includes(term)
+          );
+        });
 
-    // Immediate client-side fuzzy search for instant results (only if fuse is ready)
-    if (fuse) {
-      handleClientSearch(value);
-    }
+      setResults(sortShowsByPopularity(matches).slice(0, 15));
+      setShowResults(true);
+    }, 100);
 
-    // Debounced server search for comprehensive results (500ms delay)
-    debounceTimeoutRef.current = setTimeout(() => {
-      // Double-check the value hasn't changed during the debounce
-      const currentNormalized = value.trim().toLowerCase();
-      if (
-        currentNormalized &&
-        currentSearchQueryRef.current === currentNormalized
-      ) {
-        handleServerSearch(value);
-      } else if (!value.trim()) {
-        setResults([]);
-        setShowResults(false);
-        currentSearchQueryRef.current = '';
-      }
-    }, 500);
+    return () => window.clearTimeout(timeout);
+  }, [fuse, query]);
+
+  const handleInputChange = (value: string) => {
+    setQuery(value);
+    if (!fuse) void initializeSearch();
   };
 
-  // Cleanup timeouts on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
-      }
-      if (clientSearchTimeoutRef.current) {
-        clearTimeout(clientSearchTimeoutRef.current);
-      }
-    };
-  }, []);
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) return;
+    setShowResults(false);
+    router.push(`/search?q=${encodeURIComponent(normalizedQuery.slice(0, 100))}`);
+  };
 
   const handleResultClick = (show: Show) => {
     setShowResults(false);
@@ -257,31 +101,32 @@ export default function SearchBar() {
 
   return (
     <div className='relative w-full max-w-3xl mx-auto'>
-      <form action={performSearch} className='relative'>
+      <form onSubmit={handleSubmit} className='relative'>
         <input
-          type='text'
+          type='search'
           name='query'
           value={query}
-          onChange={handleInputChange}
-          onFocus={handleInputFocus}
+          onChange={(event) => handleInputChange(event.target.value)}
+          onFocus={() => void initializeSearch()}
+          maxLength={100}
+          autoComplete='off'
           placeholder='Search for movies and TV shows...'
           className='w-full px-6 py-4 text-lg rounded-full bg-[#1a1a1a] text-[#FFD700] placeholder-[#FFD700]/50 border-2 border-[#FFD700]/30 focus:border-[#FFD700] focus:outline-none transition-colors'
         />
         <button
           type='submit'
-          disabled={isSearching}
-          className='absolute right-2 top-1/2 -translate-y-1/2 px-6 py-2 bg-[#FFD700] hover:bg-[#FFB300] text-[#000000] rounded-full font-semibold transition-colors disabled:opacity-50'
+          className='absolute right-2 top-1/2 -translate-y-1/2 px-6 py-2 bg-[#FFD700] hover:bg-[#FFB300] text-[#000000] rounded-full font-semibold transition-colors'
         >
-          {isSearching ? 'Searching...' : 'Search'}
+          Search
         </button>
       </form>
 
-      {/* Search Results Dropdown */}
       {showResults && results.length > 0 && (
         <div className='absolute z-50 w-full mt-2 bg-[#1a1a1a] rounded-lg shadow-2xl max-h-96 overflow-y-auto border border-[#FFD700]/30'>
           {results.map((show) => (
             <button
               key={`${show.media_type}-${show.id}`}
+              type='button'
               onClick={() => handleResultClick(show)}
               className='w-full px-4 py-3 flex items-center gap-4 hover:bg-[#FFD700]/10 transition-colors text-left border-b border-[#FFD700]/20 last:border-b-0'
             >
@@ -297,15 +142,6 @@ export default function SearchBar() {
                     fill
                     className='object-cover rounded'
                     sizes='64px'
-                    width={92}
-                    height={138}
-                    onError={(e) => {
-                      // Hide broken images to prevent 404s
-                      const target = e.target as HTMLImageElement;
-                      if (target.parentElement) {
-                        target.parentElement.style.display = 'none';
-                      }
-                    }}
                   />
                 </div>
               )}
@@ -320,18 +156,12 @@ export default function SearchBar() {
                   <span className='text-xs bg-[#FFD700] text-[#000000] px-2 py-1 rounded'>
                     {show.media_type === 'tv' ? 'TV' : 'Movie'}
                   </span>
-                  {(() => {
-                    const rating = getShowRating(show);
-                    return (
-                      rating > 0 &&
-                      rating < 10 && (
-                        <span className='text-xs text-[#FFD700] flex items-center gap-1'>
-                          <span>⭐</span>
-                          {rating.toFixed(1)}
-                        </span>
-                      )
-                    );
-                  })()}
+                  {getShowRating(show) > 0 && getShowRating(show) < 10 && (
+                    <span className='text-xs text-[#FFD700] flex items-center gap-1'>
+                      <span>⭐</span>
+                      {getShowRating(show).toFixed(1)}
+                    </span>
+                  )}
                 </div>
               </div>
             </button>
@@ -339,7 +169,6 @@ export default function SearchBar() {
         </div>
       )}
 
-      {/* Click outside to close */}
       {showResults && (
         <div
           className='fixed inset-0 z-40'

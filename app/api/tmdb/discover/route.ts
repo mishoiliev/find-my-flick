@@ -1,63 +1,67 @@
 import { discoverShowsByGenreLogic } from '@/lib/discover';
+import {
+  CACHE_TTL,
+  noStoreHeaders,
+  publicCacheHeaders,
+} from '@/lib/http-cache';
+import { MOVIE_GENRES, TV_GENRES } from '@/lib/tmdb';
 import { NextRequest, NextResponse } from 'next/server';
 
-// Cache for 30 minutes (genre-based queries change less frequently)
-export const revalidate = 1800;
+export const revalidate = 86400;
+
+const validGenreIds = new Set([
+  ...Object.keys(MOVIE_GENRES),
+  ...Object.keys(TV_GENRES),
+]);
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
-  const genreIds = searchParams.get('genres'); // Comma-separated genre IDs
-  const typeParam = searchParams.get('type') || 'all'; // 'all', 'movie', 'tv'
+  const typeParam = searchParams.get('type');
   const type: 'all' | 'movie' | 'tv' =
     typeParam === 'movie' || typeParam === 'tv' ? typeParam : 'all';
-  const page = searchParams.get('page') || '1';
-  const maxResults = parseInt(searchParams.get('maxResults') || '50', 10);
-
-  if (!genreIds) {
-    return NextResponse.json(
-      { error: 'Genre IDs parameter is required' },
-      { status: 400 }
-    );
-  }
-
-  const genreIdArray = genreIds
+  const page = Math.max(
+    1,
+    Math.min(500, parseInt(searchParams.get('page') || '1', 10) || 1)
+  );
+  const maxResults = Math.max(
+    1,
+    Math.min(50, parseInt(searchParams.get('maxResults') || '50', 10) || 50)
+  );
+  const genreIds = (searchParams.get('genres') || '')
     .split(',')
     .map((id) => id.trim())
-    .filter(Boolean);
-  if (genreIdArray.length === 0) {
+    .filter((id) => validGenreIds.has(id))
+    .slice(0, 8)
+    .sort();
+
+  if (genreIds.length === 0) {
     return NextResponse.json(
-      { error: 'At least one genre ID is required' },
-      { status: 400 }
+      { error: 'At least one valid genre ID is required' },
+      { status: 400, headers: noStoreHeaders }
     );
   }
 
   try {
     const result = await discoverShowsByGenreLogic(
-      genreIdArray,
+      genreIds,
       type,
-      page,
+      String(page),
       maxResults
     );
-
     return NextResponse.json(result, {
-      headers: {
-        'Cache-Control': 'public, s-maxage=1800, stale-while-revalidate=3600',
-      },
+      headers: publicCacheHeaders(CACHE_TTL.catalog),
     });
   } catch (error) {
     console.error('Error discovering shows by genre:', error);
-    const errorMessage =
-      error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
       {
         error: 'Failed to discover shows by genre',
-        details: errorMessage,
         results: [],
         page: 1,
         total_pages: 0,
         total_results: 0,
       },
-      { status: 500 }
+      { status: 502, headers: noStoreHeaders }
     );
   }
 }

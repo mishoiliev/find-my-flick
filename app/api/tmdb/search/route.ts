@@ -1,88 +1,80 @@
+import {
+  CACHE_TTL,
+  noStoreHeaders,
+  publicCacheHeaders,
+} from '@/lib/http-cache';
 import { NextRequest, NextResponse } from 'next/server';
 
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
-// Cache for 10 minutes (search results can be cached briefly)
-export const revalidate = 600;
+export const revalidate = 21600;
 
 export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams;
-  const query = searchParams.get('q');
-  const page = searchParams.get('page') || '1';
-  const maxResults = searchParams.get('maxResults') || '30';
+  const query = (request.nextUrl.searchParams.get('q') || '').trim().slice(0, 100);
+  const page = Math.max(
+    1,
+    Math.min(
+      500,
+      parseInt(request.nextUrl.searchParams.get('page') || '1', 10) || 1
+    )
+  );
 
-  if (!query) {
+  if (query.length < 2) {
     return NextResponse.json(
-      { error: 'Query parameter is required' },
-      { status: 400 }
+      { error: 'Query must contain at least two characters' },
+      { status: 400, headers: noStoreHeaders }
     );
   }
 
   try {
     const [movieResponse, tvResponse] = await Promise.all([
       fetch(
-        `${TMDB_BASE_URL}/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(
-          query
-        )}&page=${page}`,
-        {
-          next: { revalidate: 600 },
-        }
+        `${TMDB_BASE_URL}/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&page=${page}`,
+        { next: { revalidate: CACHE_TTL.search } }
       ),
       fetch(
-        `${TMDB_BASE_URL}/search/tv?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(
-          query
-        )}&page=${page}`,
-        {
-          next: { revalidate: 600 },
-        }
+        `${TMDB_BASE_URL}/search/tv?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&page=${page}`,
+        { next: { revalidate: CACHE_TTL.search } }
       ),
     ]);
 
     if (!movieResponse.ok || !tvResponse.ok) {
-      throw new Error('Failed to search shows');
+      throw new Error('TMDB search request failed');
     }
 
-    const movieData = await movieResponse.json();
-    const tvData = await tvResponse.json();
-
-    // Combine and normalize results
-    const combinedResults = [
-      ...movieData.results.map((m: any) => ({
-        ...m,
+    const [movieData, tvData] = await Promise.all([
+      movieResponse.json(),
+      tvResponse.json(),
+    ]);
+    const results = [
+      ...(movieData.results || []).map((show: any) => ({
+        ...show,
         media_type: 'movie',
-        title: m.title || m.name,
-        name: m.name || m.title,
+        title: show.title || show.name,
+        name: show.name || show.title,
       })),
-      ...tvData.results.map((t: any) => ({
-        ...t,
+      ...(tvData.results || []).map((show: any) => ({
+        ...show,
         media_type: 'tv',
-        title: t.name || t.title,
-        name: t.name || t.title,
+        title: show.name || show.title,
+        name: show.name || show.title,
       })),
-    ];
+    ].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+    const totalResults = movieData.total_results + tvData.total_results;
+    const totalPages = Math.min(
+      500,
+      Math.max(movieData.total_pages || 0, tvData.total_pages || 0)
+    );
 
-    // Calculate pagination
-    const combinedTotal = movieData.total_results + tvData.total_results;
-    const resultsPerPage = 40;
-    const calculatedTotalPages = Math.ceil(combinedTotal / resultsPerPage);
-    const maxTotalPages = Math.max(movieData.total_pages, tvData.total_pages);
-
-    const finalResults = combinedResults.slice(0, parseInt(maxResults));
-
-    // Ensure we always return results array, even if empty
     return NextResponse.json(
       {
-        results: finalResults || [],
-        page: parseInt(page),
-        total_pages: Math.max(calculatedTotalPages, maxTotalPages),
-        total_results: combinedTotal,
+        results,
+        page,
+        total_pages: totalPages,
+        total_results: totalResults,
       },
-      {
-        headers: {
-          'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=1800',
-        },
-      }
+      { headers: publicCacheHeaders(CACHE_TTL.search) }
     );
   } catch (error) {
     console.error('Error searching shows:', error);
@@ -94,7 +86,7 @@ export async function GET(request: NextRequest) {
         total_pages: 0,
         total_results: 0,
       },
-      { status: 500 }
+      { status: 502, headers: noStoreHeaders }
     );
   }
 }

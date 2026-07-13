@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "version:patch": "npm version patch",
     "version:minor": "npm version minor",
     "version:major": "npm version major"
@@ -17,30 +17,28 @@
     "@fortawesome/react-fontawesome": "^3.1.1",
     "@radix-ui/react-popover": "^1.1.2",
     "@radix-ui/react-select": "^2.2.6",
-    "@upstash/redis": "^1.36.1",
     "@vercel/analytics": "^1.6.1",
-    "@vercel/kv": "^3.0.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "fuse.js": "^7.0.0",
     "lucide-react": "^0.562.0",
-    "next": "^16.1.1",
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3",
+    "next": "16.2.10",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
     "sharp": "^0.34.5",
     "tailwind-merge": "^2.5.4"
   },
   "devDependencies": {
-    "typescript": "^5.5.4",
     "@types/node": "^20.14.12",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.19",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "16.2.10",
     "postcss": "^8.4.40",
     "tailwindcss": "^3.4.7",
     "tailwindcss-animate": "^1.0.7",
-    "eslint": "^8.57.0",
-    "eslint-config-next": "^16.1.1"
+    "typescript": "^5.5.4"
   }
 }

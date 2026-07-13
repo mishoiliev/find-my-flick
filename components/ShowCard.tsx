@@ -39,6 +39,7 @@ export default function ShowCard({
   return (
     <Link
       href={`/show/${mediaType}/${show.id}`}
+      prefetch={false}
       className={`group relative overflow-hidden rounded-lg bg-[#1a1a1a] border border-[#FFD700]/20 hover:border-[#FFD700]/50 hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-[#FFD700]/20 ${
         gridLayout === 'search' ? 'h-full w-full' : ''
       }`}

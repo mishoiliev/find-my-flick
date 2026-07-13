@@ -11,13 +11,19 @@ import {
   getShowDetails,
   getShowRating,
   getShowTitle,
+  getWatchProviders,
 } from '@/lib/tmdb';
 import type { Metadata } from 'next';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
 
-// Enable static generation with revalidation to reduce function invocations
-export const revalidate = 3600; // Revalidate every hour
+// Build each detail page on its first real visit, then keep it in ISR.
+export const revalidate = 86400;
+export const dynamicParams = true;
+
+export function generateStaticParams() {
+  return [];
+}
 
 interface ShowDetailPageProps {
   params: Promise<{
@@ -133,9 +139,10 @@ export default async function ShowDetailPage({ params }: ShowDetailPageProps) {
     notFound();
   }
 
-  const [show, cast] = await Promise.all([
+  const [show, cast, initialProviders] = await Promise.all([
     getShowDetails(showId, mediaType),
     getShowCredits(showId, mediaType),
+    getWatchProviders(showId, mediaType, 'US'),
   ]);
 
   if (!show) {
@@ -221,13 +228,6 @@ export default async function ShowDetailPage({ params }: ShowDetailPageProps) {
             fill
             className='object-cover'
             priority
-            onError={(e) => {
-              // Hide broken images to prevent 404s
-              const target = e.target as HTMLImageElement;
-              if (target.parentElement) {
-                target.parentElement.style.display = 'none';
-              }
-            }}
           />
           <div className='absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent' />
         </div>
@@ -245,13 +245,6 @@ export default async function ShowDetailPage({ params }: ShowDetailPageProps) {
                   fill
                   className='object-cover'
                   sizes='(max-width: 768px) 192px, 256px'
-                  onError={(e) => {
-                    // Hide broken images to prevent 404s
-                    const target = e.target as HTMLImageElement;
-                    if (target.parentElement) {
-                      target.parentElement.style.display = 'none';
-                    }
-                  }}
                 />
               ) : (
                 <div className='w-full h-full bg-[#1a1a1a] flex items-center justify-center'>
@@ -330,7 +323,12 @@ export default async function ShowDetailPage({ params }: ShowDetailPageProps) {
               <h2 className='text-2xl font-semibold mb-3 text-[#FFD700]'>
                 Where to watch {title}
               </h2>
-              <WatchProviders showId={showId} mediaType={mediaType} />
+              <WatchProviders
+                showId={showId}
+                mediaType={mediaType}
+                initialCountryCode='US'
+                initialProviders={initialProviders}
+              />
             </div>
           </div>
         </div>

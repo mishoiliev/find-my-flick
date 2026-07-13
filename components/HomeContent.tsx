@@ -1,23 +1,36 @@
 'use client';
 
 import { Genre, MOVIE_GENRES, Show, TV_GENRES } from '@/lib/tmdb';
-import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
 import ShowGrid from './ShowGrid';
 
 interface HomeContentProps {
   popularMovies: Show[];
   popularTVShows: Show[];
-  selectedGenreIds: number[];
 }
 
 export default function HomeContent({
   popularMovies,
   popularTVShows,
-  selectedGenreIds,
 }: HomeContentProps) {
+  const searchParams = useSearchParams();
+  const selectedGenresParam = searchParams.get('genres');
+  const selectedGenreIds = useMemo(
+    () =>
+      selectedGenresParam
+        ? selectedGenresParam
+            .split(',')
+            .map((id) => parseInt(id.trim(), 10))
+            .filter((id) => Number.isInteger(id) && id > 0)
+        : [],
+    [selectedGenresParam]
+  );
   const [filteredShows, setFilteredShows] = useState<Show[]>([]);
-  const [loading, setLoading] = useState(false);
   const [totalResults, setTotalResults] = useState(0);
+  const [loadedGenres, setLoadedGenres] = useState('');
+  const genresKey = selectedGenreIds.join(',');
+  const loading = selectedGenreIds.length > 0 && loadedGenres !== genresKey;
 
   // Get available genres for display
   const getAvailableGenres = (): Genre[] => {
@@ -46,40 +59,39 @@ export default function HomeContent({
   // Fetch shows by genre when genres are selected
   useEffect(() => {
     if (selectedGenreIds.length > 0) {
-      setLoading(true);
+      const controller = new AbortController();
       const fetchShows = async () => {
         try {
           const genreIdsParam = selectedGenreIds.join(',');
           const response = await fetch(
             `/api/tmdb/discover?genres=${genreIdsParam}&type=all&page=1&maxResults=50`,
             {
-              cache: 'force-cache', // Use browser cache
+              cache: 'default',
+              signal: controller.signal,
             }
           );
           if (response.ok) {
             const data = await response.json();
             setFilteredShows(data.results || []);
             setTotalResults(data.total_results || 0);
+            setLoadedGenres(genresKey);
           } else {
             setFilteredShows([]);
             setTotalResults(0);
+            setLoadedGenres(genresKey);
           }
         } catch (error) {
+          if (error instanceof DOMException && error.name === 'AbortError') return;
           console.error('Error fetching shows by genre:', error);
           setFilteredShows([]);
           setTotalResults(0);
-        } finally {
-          setLoading(false);
+          setLoadedGenres(genresKey);
         }
       };
-      fetchShows();
-    } else {
-      // Clear filtered shows when no genres are selected
-      setFilteredShows([]);
-      setTotalResults(0);
-      setLoading(false);
+      void fetchShows();
+      return () => controller.abort();
     }
-  }, [selectedGenreIds]);
+  }, [genresKey, selectedGenreIds]);
 
   // Get genre names for display
   const getGenreNames = () => {

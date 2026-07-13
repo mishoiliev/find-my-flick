@@ -31,6 +31,7 @@ export default function CastList({ cast }: CastListProps) {
             <Link
               key={actor.id}
               href={`/actor/${actor.id}`}
+              prefetch={false}
               className='flex flex-col items-center text-center group cursor-pointer flex-shrink-0 w-32'
             >
               <div className='relative w-32 h-32 mb-3 rounded-full overflow-hidden border-2 border-[#FFD700]/20 group-hover:border-[#FFD700]/50 transition-all'>
@@ -41,13 +42,6 @@ export default function CastList({ cast }: CastListProps) {
                     fill
                     className='object-cover group-hover:scale-110 transition-transform'
                     sizes='128px'
-                    onError={(e) => {
-                      // Hide broken images to prevent 404s
-                      const target = e.target as HTMLImageElement;
-                      if (target.parentElement) {
-                        target.parentElement.style.display = 'none';
-                      }
-                    }}
                   />
                 ) : (
                   <div className='w-full h-full bg-[#0a0a0a] flex items-center justify-center'>
